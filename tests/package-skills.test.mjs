@@ -64,15 +64,19 @@ test("skill packaging rejects an output directory inside a source skill", () => 
     "arch-diagram",
     `.package-test-output-${process.pid}-${Date.now()}`,
   );
-  const linkRoot = fs.mkdtempSync(path.join(os.tmpdir(), "diagramcraft package link "));
-  const linkedOutput = path.join(linkRoot, "linked skill output");
-  fs.mkdirSync(internalOutput);
-  fs.symlinkSync(internalOutput, linkedOutput, "dir");
+  let linkRoot;
 
   try {
+    fs.mkdirSync(internalOutput);
+    linkRoot = fs.mkdtempSync(path.join(os.tmpdir(), "diagramcraft package link "));
+    const linkedOutput = path.join(linkRoot, "linked skill output");
+    fs.symlinkSync(internalOutput, linkedOutput, "dir");
+    const dotDotOutput = `${internalOutput}/../${path.basename(internalOutput)}`;
+    assert.match(dotDotOutput, /\/\.\.\//);
+
     const outputVariants = [
       internalOutput,
-      path.join(internalOutput, "..", path.basename(internalOutput)),
+      dotDotOutput,
       linkedOutput,
     ];
     for (const outputDirectory of outputVariants) {
@@ -85,7 +89,7 @@ test("skill packaging rejects an output directory inside a source skill", () => 
     }
     assert.deepEqual(fs.readdirSync(internalOutput), []);
   } finally {
-    fs.rmSync(linkRoot, { recursive: true, force: true });
+    if (linkRoot) fs.rmSync(linkRoot, { recursive: true, force: true });
     fs.rmSync(internalOutput, { recursive: true, force: true });
   }
 });
