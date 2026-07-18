@@ -5,6 +5,7 @@ import { normalizeDiagram } from "../src/diagram/schema.js";
 import { LOGIN_FLOW } from "../examples/diagrams.js";
 import { analyzeGraph, orderRanks } from "../src/diagram/layout/graph.js";
 import { layoutFlowchart } from "../src/diagram/layout/flowchart.js";
+import { layoutDiagram } from "../src/diagram/layout/index.js";
 
 function deepFreeze(value) {
   if (value && typeof value === "object") {
@@ -29,6 +30,23 @@ const cycleEdges = [
 
 function rankIds(rankOrder) {
   return rankOrder.map((rank) => rank.map(({ id }) => id));
+}
+
+function linearFlow(nodeCount) {
+  const nodes = Array.from({ length: nodeCount }, (_, index) => ({
+    id: `node-${index}`,
+    label: `Node ${index}`,
+    type: "process",
+  }));
+  return {
+    kind: "flowchart",
+    title: `${nodeCount}-node linear flow`,
+    nodes,
+    edges: nodes.slice(1).map((node, index) => ({
+      from: nodes[index].id,
+      to: node.id,
+    })),
+  };
 }
 
 test("analyzeGraph identifies a DFS back edge and assigns main-flow ranks", () => {
@@ -87,6 +105,24 @@ test("analyzeGraph retains disconnected nodes in source order", () => {
   assert.deepEqual(rankIds(orderRanks(nodes, edges, analysis.ranks, analysis.feedbackEdgeIndexes)), [
     ["a", "lonely"], ["b"], ["c"],
   ]);
+});
+
+test("force layout handles a 5000-node linear flow without exhausting the call stack", { timeout: 30_000 }, () => {
+  const diagram = linearFlow(5_000);
+  const analysis = analyzeGraph(diagram.nodes, diagram.edges);
+
+  assert.equal(analysis.feedbackEdgeIndexes.size, 0);
+  diagram.nodes.forEach((node, index) => assert.equal(analysis.ranks.get(node.id), index));
+
+  const first = layoutDiagram(diagram, { mode: "force" });
+  const second = layoutDiagram(diagram, { mode: "force" });
+
+  assert.equal(first.edges.filter(({ route }) => route === "feedback").length, 0);
+  assert.ok(Number.isFinite(first.width) && Number.isFinite(first.height));
+  assert.ok(first.nodes.every(({ x, y, width, height }) => (
+    [x, y, width, height].every(Number.isFinite)
+  )));
+  assert.deepEqual(second, first);
 });
 
 test("layoutFlowchart lays ranks top-to-bottom and reserves a feedback gutter", () => {

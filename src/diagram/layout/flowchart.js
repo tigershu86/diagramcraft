@@ -17,8 +17,10 @@ export function layoutFlowchart(diagram) {
   const rowWidths = rankOrder.map((rank) => (
     rank.reduce((sum, node) => sum + node.width, 0) + Math.max(0, rank.length - 1) * COLUMN_GAP
   ));
-  const mainWidth = Math.max(MIN_MAIN_WIDTH, 0, ...rowWidths);
-  const rowHeights = rankOrder.map((rank) => Math.max(0, ...rank.map((node) => node.height)));
+  const mainWidth = rowWidths.reduce((maximum, width) => Math.max(maximum, width), MIN_MAIN_WIDTH);
+  const rowHeights = rankOrder.map((rank) => (
+    rank.reduce((maximum, node) => Math.max(maximum, node.height), 0)
+  ));
   const positions = new Map();
   let y = OUTER;
   rankOrder.forEach((rank, rankIndex) => {

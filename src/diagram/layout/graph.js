@@ -27,14 +27,27 @@ export function analyzeGraph(nodes = [], edges = []) {
 
   const state = new Map(nodes.map((node) => [node.id, 0]));
   const feedbackEdgeIndexes = new Set();
-  const visit = (id) => {
-    state.set(id, 1);
-    outgoing.get(id).forEach((edge) => {
+  const visit = (startId) => {
+    state.set(startId, 1);
+    const stack = [{ id: startId, edgeIndex: 0 }];
+    while (stack.length > 0) {
+      const frame = stack.at(-1);
+      const edgesFromNode = outgoing.get(frame.id);
+      if (frame.edgeIndex >= edgesFromNode.length) {
+        state.set(frame.id, 2);
+        stack.pop();
+        continue;
+      }
+
+      const edge = edgesFromNode[frame.edgeIndex];
+      frame.edgeIndex += 1;
       const destinationState = state.get(edge.to);
       if (destinationState === 1) feedbackEdgeIndexes.add(edge.index);
-      else if (destinationState === 0) visit(edge.to);
-    });
-    state.set(id, 2);
+      else if (destinationState === 0) {
+        state.set(edge.to, 1);
+        stack.push({ id: edge.to, edgeIndex: 0 });
+      }
+    }
   };
 
   nodes.forEach((node) => {
@@ -95,26 +108,32 @@ export function orderRanks(nodes = [], edges = [], ranks = new Map(), feedbackEd
 
   const indexes = sourceIndexes(nodes);
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
-  const maxRank = Math.max(...nodes.map((node) => ranks.get(node.id) ?? 0));
+  const maxRank = nodes.reduce((maximum, node) => (
+    Math.max(maximum, ranks.get(node.id) ?? 0)
+  ), 0);
   const rankOrder = Array.from({ length: maxRank + 1 }, () => []);
   nodes.forEach((node) => rankOrder[ranks.get(node.id) ?? 0].push(node.id));
   const forwardEdges = knownEdges(nodes, edges).filter((edge) => !feedbackEdgeIndexes.has(edge.index));
+  const nodePositions = positions(rankOrder);
+  const updateRankPositions = (rank) => {
+    rankOrder[rank].forEach((id, index) => nodePositions.set(id, { rank, index }));
+  };
 
   for (let rank = 1; rank < rankOrder.length; rank += 1) {
-    const nodePositions = positions(rankOrder);
     rankOrder[rank].sort((left, right) => (
       barycenter(left, forwardEdges, "to", rank, nodePositions, ranks, indexes.get(left))
       - barycenter(right, forwardEdges, "to", rank, nodePositions, ranks, indexes.get(right))
       || indexes.get(left) - indexes.get(right)
     ));
+    updateRankPositions(rank);
   }
   for (let rank = rankOrder.length - 2; rank >= 0; rank -= 1) {
-    const nodePositions = positions(rankOrder);
     rankOrder[rank].sort((left, right) => (
       barycenter(left, forwardEdges, "from", rank, nodePositions, ranks, indexes.get(left))
       - barycenter(right, forwardEdges, "from", rank, nodePositions, ranks, indexes.get(right))
       || indexes.get(left) - indexes.get(right)
     ));
+    updateRankPositions(rank);
   }
 
   return rankOrder.map((rank) => rank.map((id) => nodesById.get(id)));

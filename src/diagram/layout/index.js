@@ -40,10 +40,10 @@ function automaticLayout(diagram) {
 }
 
 function contentSize(nodes) {
-  return {
-    width: Math.max(CANVAS_PADDING, ...nodes.map((node) => node.x + node.width + CANVAS_PADDING)),
-    height: Math.max(CANVAS_PADDING, ...nodes.map((node) => node.y + node.height + CANVAS_PADDING)),
-  };
+  return nodes.reduce((size, node) => ({
+    width: Math.max(size.width, node.x + node.width + CANVAS_PADDING),
+    height: Math.max(size.height, node.y + node.height + CANVAS_PADDING),
+  }), { width: CANVAS_PADDING, height: CANVAS_PADDING });
 }
 
 function blockedOffsetIntervals(node, placed, step) {
@@ -102,7 +102,7 @@ function reserveHorizontalPosition(node, placed) {
 }
 
 function fitFeedback(edges, nodes, width, height) {
-  const maxRight = Math.max(0, ...nodes.map((node) => node.x + node.width));
+  const maxRight = nodes.reduce((maximum, node) => Math.max(maximum, node.x + node.width), 0);
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
   let fittedWidth = width;
   let fittedHeight = height;
@@ -139,8 +139,8 @@ function fitOrdinary(edges, width, height) {
   const labelMetrics = edges
     .filter((edge) => edge.route !== "feedback" && edge.label)
     .map((edge) => edgeLabelMetrics(edge.label));
-  const fittedWidth = Math.max(width, ...labelMetrics.map(({ width: labelWidth }) => labelWidth));
-  const fittedHeight = Math.max(height, ...labelMetrics.map(({ height: labelHeight }) => labelHeight));
+  const fittedWidth = labelMetrics.reduce((maximum, metrics) => Math.max(maximum, metrics.width), width);
+  const fittedHeight = labelMetrics.reduce((maximum, metrics) => Math.max(maximum, metrics.height), height);
   return {
     edges: edges.map((edge) => ({ ...edge })),
     width: fittedWidth,
