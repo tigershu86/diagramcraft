@@ -264,9 +264,8 @@ export function DiagramRenderer({
   showHint = true,
 }) {
   const diagram = useMemo(() => {
-    const normalized = normalizeDiagram(input);
-    assertPreparedDiagram(normalized);
-    return normalized;
+    assertPreparedDiagram(input);
+    return normalizeDiagram(input);
   }, [input]);
   const [hovered, setHovered] = useState(null);
   const [selected, setSelected] = useState(initialSelectedId);

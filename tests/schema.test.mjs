@@ -67,8 +67,12 @@ test("validateDiagram rejects a node with only one coordinate", () => {
   );
 });
 
-test("architecture accepts fully positioned manual nodes without tiers", () => {
-  assert.deepEqual(validateDiagram({ ...validDiagram, kind: "architecture" }), []);
+test("architecture accepts fully positioned manual nodes without node tiers", () => {
+  assert.deepEqual(validateDiagram({
+    ...validDiagram,
+    kind: "architecture",
+    tiers: [{ id: "edge", label: "Edge" }],
+  }), []);
 });
 
 test("force layout requires architecture nodes to declare a tier", () => {
@@ -129,6 +133,26 @@ test("normalizeDiagram applies presets without inventing omitted coordinates", (
     label: "Start",
     type: "terminal",
     width: 140,
+    height: 44,
+    shape: "terminal",
+    sublabel: "",
+  });
+});
+
+test("normalizeDiagram never applies coordinates from node defaults", () => {
+  const normalized = normalizeDiagram({
+    kind: "flowchart",
+    title: "Coordinate-free defaults",
+    nodeDefaults: { x: 10, y: 20, width: 190 },
+    nodes: [{ id: "start", label: "Start", type: "terminal" }],
+    edges: [],
+  });
+
+  assert.deepEqual(normalized.nodes[0], {
+    id: "start",
+    label: "Start",
+    type: "terminal",
+    width: 190,
     height: 44,
     shape: "terminal",
     sublabel: "",

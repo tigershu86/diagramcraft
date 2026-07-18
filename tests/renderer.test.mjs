@@ -51,17 +51,20 @@ test("DiagramRenderer rejects invalid graph data before rendering", () => {
   );
 });
 
-test("DiagramRenderer rejects structurally valid coordinate-free data before rendering", () => {
+test("DiagramRenderer checks raw coordinate-free input before node defaults", () => {
   assert.throws(
     () => renderToStaticMarkup(React.createElement(DiagramRenderer, {
       diagram: {
         kind: "flowchart",
         title: "Unprepared flow",
+        width: 320,
+        height: 180,
+        nodeDefaults: { x: 80, y: 40 },
         nodes: [{ id: "start", label: "Start", type: "terminal" }],
         edges: [],
       },
     })),
-    /unprepared-width[\s\S]*unprepared-height[\s\S]*unprepared-node-position/,
+    /unprepared-node-position/,
   );
 });
 

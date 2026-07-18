@@ -13,6 +13,7 @@ const kinds = new Set(DIAGRAM_KINDS);
 const anchors = new Set(ANCHORS);
 const shapes = new Set(NODE_SHAPES);
 const nodeTypes = new Set(NODE_TYPES);
+const NODE_DEFAULT_FIELDS = ["width", "height", "shape", "sublabel"];
 
 function issue(code, path, message) {
   return { code, path, message };
@@ -230,6 +231,11 @@ export function assertPreparedDiagram(diagram, options = {}) {
 
 export function normalizeDiagram(diagram, options = {}) {
   assertDiagram(diagram, options);
+  const nodeDefaults = Object.fromEntries(
+    NODE_DEFAULT_FIELDS
+      .filter((field) => diagram.nodeDefaults?.[field] !== undefined)
+      .map((field) => [field, diagram.nodeDefaults[field]]),
+  );
   return {
     subtitle: "",
     tiers: [],
@@ -240,7 +246,7 @@ export function normalizeDiagram(diagram, options = {}) {
       return {
         sublabel: "",
         ...preset,
-        ...diagram.nodeDefaults,
+        ...nodeDefaults,
         ...node,
       };
     }),
