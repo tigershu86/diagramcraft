@@ -9,6 +9,11 @@ import { buildDiagramSchema } from "../scripts/schema.mjs";
 import { DiagramRenderer } from "../src/diagram/DiagramRenderer.js";
 import { renderDiagramSvg } from "../src/diagram/export.js";
 import { prepareDiagram } from "../src/diagram/layout/index.js";
+import {
+  isSupportedPaint,
+  PAINT_MAX_LENGTH,
+  PAINT_PATTERN_SOURCE,
+} from "../src/diagram/paint.js";
 import { validateDiagram } from "../src/diagram/schema.js";
 
 const validateJson = new Ajv2020({ strict: true, allErrors: true }).compile(buildDiagramSchema());
@@ -68,6 +73,15 @@ const validPaints = [
   "rgb(1e308 0 0)",
   "rgb(1.7976931348623157e308 0 0)",
   "rgb(1.7976931348623158e308 0 0)",
+  "rgb(10e100 0 0)",
+  "rgb(12.3e100 0 0)",
+  "rgb(99e200 0 0)",
+  `rgb(${"1".repeat(101)}e1 0 0)`,
+  "lab(1e999 0 0)",
+  "rgb(1e309 0 0)",
+  "rgb(1.8e308 0 0)",
+  "rgb(1.7976931348623159e308 0 0)",
+  `rgb(${"9".repeat(309)} 0 0)`,
   " \t\r\n#AbC \n\r\t",
   "rgb(\t1  \n2\r 3 /\t.5\n)",
   "hsl(120deg, 50%, 40%)",
@@ -97,12 +111,10 @@ const invalidPaints = [
   "rgb(10%,20,30%)",
   "rgba(1 2 3 4)",
   "hsl(120deg 50 40%)",
-  "lab(1e999 0 0)",
-  "rgb(1e309 0 0)",
-  "rgb(1.8e308 0 0)",
-  "rgb(1.7976931348623159e308 0 0)",
-  `rgb(${"9".repeat(309)} 0 0)`,
   `rgb(.${"1".repeat(1025)} 0 0)`,
+  "rgb(1e 0 0)",
+  "rgb(1e+ 0 0)",
+  "rgb(.e2 0 0)",
   "oklch(NaN .2 .25turn)",
   "rgb(Infinity 0 0)",
   "\u000B#abc",
@@ -145,6 +157,33 @@ test("unsafe paints fail JSON Schema, runtime, preview, and standalone export at
       );
       assert.throws(() => renderDiagramSvg(diagram), errorPattern, `${target.name} ${String(paint)}`);
     }
+  }
+});
+
+test("shared paint grammar bounds every digit and XML whitespace repetition", () => {
+  assert.equal(PAINT_MAX_LENGTH, 1024);
+  assert.ok(PAINT_PATTERN_SOURCE.length < 25_000, `pattern length: ${PAINT_PATTERN_SOURCE.length}`);
+  assert.doesNotMatch(PAINT_PATTERN_SOURCE, /\\d[+*]/);
+  assert.doesNotMatch(PAINT_PATTERN_SOURCE, /\[ \\t\\r\\n\][+*]/);
+});
+
+test("shared paint validators reject multi-megabyte inputs quickly without throwing", () => {
+  const hugeValues = [
+    " ".repeat(5_000_000),
+    `rgb(1e-${"9".repeat(5_000_000)} 0 0)`,
+  ];
+
+  for (const value of hugeValues) {
+    const diagram = targets[0].diagram(value);
+    const startedAt = performance.now();
+    let schemaResult;
+    assert.doesNotThrow(() => {
+      schemaResult = validateJson(diagram);
+    });
+    assert.equal(schemaResult, false);
+    assert.equal(isSupportedPaint(value), false);
+    const elapsed = performance.now() - startedAt;
+    assert.ok(elapsed < 2_000, `oversized paint took ${elapsed.toFixed(1)}ms`);
   }
 });
 
