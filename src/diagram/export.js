@@ -9,9 +9,10 @@ const FILENAME_SEGMENTER = new Intl.Segmenter("en", { granularity: "grapheme" })
 const FILENAME_ENCODER = new TextEncoder();
 const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
-const PERCENTAGE_TOKEN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?%$/i;
-const NUMBER_OR_PERCENT_TOKEN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?%?$/i;
-const HUE_TOKEN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?(?:deg|grad|rad|turn)?$/i;
+const PLAIN_NUMBER_TOKEN = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:e[+-]?\d+)?$/i;
+const PERCENTAGE_TOKEN = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:e[+-]?\d+)?%$/i;
+const NUMBER_OR_PERCENT_TOKEN = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:e[+-]?\d+)?%?$/i;
+const HUE_TOKEN = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:e[+-]?\d+)?(?:deg|grad|rad|turn)?$/i;
 const NUMERIC_COLOR_FUNCTIONS = new Set([
   "rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch",
 ]);
@@ -84,10 +85,17 @@ function legacyNumericColor(name, body) {
   if (body.includes("/") || !["rgb", "rgba", "hsl", "hsla"].includes(name)) return false;
   const components = body.split(",").map((component) => component.trim());
   if (components.some((component) => !component || /\s/.test(component))) return false;
-  const rgb = [NUMBER_OR_PERCENT_TOKEN, NUMBER_OR_PERCENT_TOKEN, NUMBER_OR_PERCENT_TOKEN];
   const hsl = [HUE_TOKEN, PERCENTAGE_TOKEN, PERCENTAGE_TOKEN];
-  if (name === "rgb") return matchesTokens(components, rgb);
-  if (name === "rgba") return matchesTokens(components, [...rgb, NUMBER_OR_PERCENT_TOKEN]);
+  if (["rgb", "rgba"].includes(name)) {
+    const expectedLength = name === "rgb" ? 3 : 4;
+    if (components.length !== expectedLength) return false;
+    const channels = components.slice(0, 3);
+    const channelPattern = channels.every((component) => finiteToken(component, PERCENTAGE_TOKEN))
+      ? PERCENTAGE_TOKEN
+      : PLAIN_NUMBER_TOKEN;
+    if (!channels.every((component) => finiteToken(component, channelPattern))) return false;
+    return name === "rgb" || finiteToken(components[3], NUMBER_OR_PERCENT_TOKEN);
+  }
   if (name === "hsl") return matchesTokens(components, hsl);
   return matchesTokens(components, [...hsl, NUMBER_OR_PERCENT_TOKEN]);
 }

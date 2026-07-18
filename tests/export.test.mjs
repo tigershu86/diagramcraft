@@ -412,6 +412,10 @@ test("renderDiagramSvg accepts self-contained paint colors", () => {
 
 test("renderDiagramSvg rejects mixed or malformed numeric color grammars", () => {
   for (const value of [
+    "rgb(1. 2 3)",
+    "rgb(1.e2 2 3)",
+    "rgb(10%,20,30%)",
+    "rgba(10%,20,30%,.5)",
     "rgba(1 2 3 4)",
     "rgb(1, 2 3)",
     "rgb(1,2,3 / .5)",
@@ -435,6 +439,8 @@ test("renderDiagramSvg accepts strict legacy and modern numeric color grammars",
   const colors = [
     "rgb(1, 2, 3)",
     "rgba(1, 2, 3, 50%)",
+    "rgb(10%, 20%, 30%)",
+    "rgba(10%, 20%, 30%, 50%)",
     "hsl(120deg, 50%, 40%)",
     "hsla(.5turn, 50%, 40%, .75)",
     "rgb(10 20% 30 / 40%)",
