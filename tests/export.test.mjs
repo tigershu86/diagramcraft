@@ -345,29 +345,44 @@ test("renderDiagramSvg preserves XML-valid whitespace and non-BMP text", () => {
   assert.doesNotMatch(svg, /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/u);
 });
 
-test("renderDiagramSvg rejects external paint references with actionable paths", () => {
+test("renderDiagramSvg rejects non-standalone paint values with actionable paths", () => {
   const cases = [
     ["fill", " URL ( https://example.test/fill.svg#paint ) "],
     ["stroke", "vAr( --stroke )"],
     ["accent", "url(#external-accent)"],
     ["text", "VAR(--text)"],
+    ["fill", "\\75rl(https://example.test/escaped.svg#paint)"],
+    ["stroke", "v\\61r(--escaped-stroke)"],
+    ["accent", "u/**/rl(https://example.test/comment.svg#paint)"],
+    ["text", "calc(1 + 2)"],
+    ["fill", "env(system-color)"],
+    ["stroke", "color(display-p3 1 0 0)"],
   ];
+  const serialized = [];
 
   for (const [field, value] of cases) {
     assert.throws(
-      () => renderDiagramSvg({
+      () => serialized.push(renderDiagramSvg({
         ...exportDiagram,
         nodes: [{ ...exportDiagram.nodes[0], style: { [field]: value } }, exportDiagram.nodes[1]],
-      }),
-      new RegExp(`external paint[\\s\\S]*nodes\\[0\\]\\.style\\.${field}`, "i"),
+      })),
+      new RegExp(`paint[\\s\\S]*nodes\\[0\\]\\.style\\.${field}`, "i"),
     );
   }
+  assert.equal(serialized.length, 0);
+  assert.throws(
+    () => renderDiagramSvg({
+      ...exportDiagram,
+      nodes: [{ ...exportDiagram.nodes[0], style: { fill: 42 } }, exportDiagram.nodes[1]],
+    }),
+    /paint[\s\S]*nodes\[0\]\.style\.fill/i,
+  );
   assert.throws(
     () => renderDiagramSvg({
       ...exportDiagram,
       tiers: [{ id: "tier", label: "Tier", x: 0, y: 0, width: 420, height: 100, color: " Url (#outside)" }],
     }),
-    /external paint[\s\S]*tiers\[0\]\.color/i,
+    /paint[\s\S]*tiers\[0\]\.color/i,
   );
 });
 
@@ -376,14 +391,23 @@ test("renderDiagramSvg accepts self-contained paint colors", () => {
     ...exportDiagram,
     nodes: [{
       ...exportDiagram.nodes[0],
-      style: { fill: "#abcdef", stroke: "rgb(1, 2, 3)", accent: "rebeccapurple", text: "navy" },
+      type: "process",
+      style: {
+        fill: " #AbC ",
+        stroke: " RgB( 10 20 30 / 50% ) ",
+        accent: " HsL( 120deg 50% 40% / .75 ) ",
+        text: " CurrentColor ",
+      },
     }, exportDiagram.nodes[1]],
-    tiers: [{ id: "tier", label: "Tier", x: 0, y: 0, width: 420, height: 100, color: "aliceblue" }],
+    tiers: [{ id: "tier", label: "Tier", x: 0, y: 0, width: 420, height: 100, color: " AlIcEbLuE " }],
   });
 
-  assert.match(svg, /fill="#abcdef"/);
-  assert.match(svg, /stroke="rgb\(1, 2, 3\)"/);
-  assert.match(svg, /fill="aliceblue"/);
+  assert.match(svg, /fill=" #AbC "/);
+  assert.match(svg, /stroke=" RgB\( 10 20 30 \/ 50% \) "/);
+  assert.match(svg, /fill=" HsL\( 120deg 50% 40% \/ \.75 \) "/);
+  assert.match(svg, /fill=" CurrentColor "/);
+  assert.match(svg, /fill=" AlIcEbLuE "/);
+  assert.doesNotMatch(svg, /\\75rl|v\\61r|u\/\*\*\/rl/);
 });
 
 test("renderDiagramSvg keeps long document text inside a widened narrow export", () => {

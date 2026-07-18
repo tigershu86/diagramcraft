@@ -44,7 +44,7 @@ export function documentMetrics(diagram) {
   };
 }
 
-function DiagramLegend({ diagram, metrics, items }) {
+function DiagramLegend({ metrics, items }) {
   if (!items.length) return null;
   return h("g", { transform: `translate(0 ${metrics.legendY})` }, items.map((item, index) => {
     const type = typeof item === "string" ? item : item.type;
@@ -120,7 +120,7 @@ export function DiagramDocument({ diagram, idPrefix }) {
       interactive: false,
       idPrefix: documentPrefix,
     })),
-    h(DiagramLegend, { key: "legend", diagram, metrics, items: legend }),
+    h(DiagramLegend, { key: "legend", metrics, items: legend }),
   ]);
 }
 

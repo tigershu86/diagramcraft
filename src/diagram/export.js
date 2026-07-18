@@ -5,10 +5,32 @@ import { DiagramDocument } from "./DiagramDocument.js";
 import { prepareDiagram } from "./layout/index.js";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>';
-const EXTERNAL_PAINT = /(^|[^\w-])(?:url|var)\s*\(/i;
 const FILENAME_SEGMENTER = new Intl.Segmenter("en", { granularity: "grapheme" });
 const FILENAME_ENCODER = new TextEncoder();
 const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
+const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+const NUMBER_TOKEN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?%?$/i;
+const ANGLE_TOKEN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?(?:deg|grad|rad|turn)?$/i;
+const NUMERIC_COLOR_FUNCTIONS = new Set([
+  "rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch",
+]);
+const NAMED_COLORS = new Set((
+  "aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown "
+  + "burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan "
+  + "darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid "
+  + "darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey darkturquoise darkviolet "
+  + "deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro "
+  + "ghostwhite gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory khaki "
+  + "lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray "
+  + "lightgreen lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey "
+  + "lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue mediumorchid "
+  + "mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue "
+  + "mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid palegoldenrod "
+  + "palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum powderblue purple rebeccapurple "
+  + "red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue slateblue "
+  + "slategray slategrey snow springgreen steelblue tan teal thistle tomato transparent turquoise violet wheat "
+  + "white whitesmoke yellow yellowgreen currentcolor none"
+).split(" "));
 
 function xmlCodePointAllowed(codePoint) {
   return codePoint === 0x09
@@ -46,19 +68,60 @@ function validateXmlStrings(value, path = "$", seen = new WeakSet()) {
   });
 }
 
+function numericComponents(value) {
+  const trimmed = value.trim();
+  if (!trimmed || /^,|,$|,\s*,/.test(trimmed)) return null;
+  return trimmed.replace(/,/g, " ").trim().split(/\s+/);
+}
+
+function validNumericColor(value) {
+  const match = value.match(/^([a-z]+)\(([\s\S]*)\)$/i);
+  if (!match) return false;
+  const name = match[1].toLowerCase();
+  if (!NUMERIC_COLOR_FUNCTIONS.has(name)) return false;
+  const sections = match[2].split("/");
+  if (sections.length > 2) return false;
+  const components = numericComponents(sections[0]);
+  let alpha = sections.length === 2 ? numericComponents(sections[1]) : null;
+  if (!components || (sections.length === 2 && (!alpha || alpha.length !== 1))) return false;
+
+  if (sections.length === 1 && ["rgba", "hsla"].includes(name) && components.length === 4) {
+    alpha = components.splice(3, 1);
+  }
+  if (components.length !== 3 || (alpha && !NUMBER_TOKEN.test(alpha[0]))) return false;
+
+  const hueIndex = ["hsl", "hsla", "hwb"].includes(name)
+    ? 0
+    : ["lch", "oklch"].includes(name) ? 2 : -1;
+  return components.every((component, index) => (
+    index === hueIndex ? ANGLE_TOKEN.test(component) : NUMBER_TOKEN.test(component)
+  ));
+}
+
+function standalonePaint(value) {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (HEX_COLOR.test(trimmed)) return true;
+  if (/^[a-z]+$/i.test(trimmed) && NAMED_COLORS.has(trimmed.toLowerCase())) return true;
+  return validNumericColor(trimmed);
+}
+
+function assertStandalonePaint(value, path) {
+  if (!standalonePaint(value)) {
+    throw new TypeError(`Invalid standalone SVG paint at ${path}: expected hex, named, or numeric color`);
+  }
+}
+
 function validateSelfContainedPaint(diagram) {
   diagram.nodes.forEach((node, index) => {
     for (const field of ["fill", "stroke", "accent", "text"]) {
-      const value = node.style?.[field];
-      if (typeof value === "string" && EXTERNAL_PAINT.test(value)) {
-        throw new TypeError(`Unsafe external paint reference at nodes[${index}].style.${field}`);
+      if (node.style && Object.hasOwn(node.style, field)) {
+        assertStandalonePaint(node.style[field], `nodes[${index}].style.${field}`);
       }
     }
   });
   diagram.tiers.forEach((tier, index) => {
-    if (typeof tier.color === "string" && EXTERNAL_PAINT.test(tier.color)) {
-      throw new TypeError(`Unsafe external paint reference at tiers[${index}].color`);
-    }
+    if (Object.hasOwn(tier, "color")) assertStandalonePaint(tier.color, `tiers[${index}].color`);
   });
 }
 

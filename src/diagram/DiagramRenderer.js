@@ -50,7 +50,6 @@ export function DiagramRenderer({
   const reactId = useId().replace(/:/g, "");
   const titleId = `${reactId}-title`;
   const descriptionId = `${reactId}-description`;
-  const selectedId = diagram.nodes.some((node) => node.id === selected) ? selected : null;
   const inferredLegend = [...new Set(diagram.nodes.map((node) => node.type))];
   const legend = diagram.legend.length ? diagram.legend : inferredLegend;
   const defaultMinWidth = Math.min(diagram.width, diagram.kind === "architecture" ? 560 : 520);
@@ -98,7 +97,7 @@ export function DiagramRenderer({
       h(DiagramScene, {
         key: "scene",
         diagram,
-        selected: selectedId,
+        selected,
         hovered,
         onHover: setHovered,
         onSelect: (id) => setSelected((current) => current === id ? null : id),
