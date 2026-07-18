@@ -1,0 +1,326 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diagramcraft.dev/schema/diagram.schema.json",
+  "title": "Diagramcraft Diagram",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "title",
+    "nodes",
+    "edges"
+  ],
+  "properties": {
+    "kind": {
+      "enum": [
+        "architecture",
+        "flowchart"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "subtitle": {
+      "type": "string"
+    },
+    "width": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "height": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "nodeDefaults": {
+      "$ref": "#/$defs/nodeDefaults"
+    },
+    "tiers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/tier"
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    },
+    "legend": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/legendItem"
+      }
+    }
+  },
+  "$defs": {
+    "style": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "nodeDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "shape": {
+          "enum": [
+            "rect",
+            "terminal",
+            "decision",
+            "data",
+            "subprocess",
+            "database",
+            "dashed-rect"
+          ]
+        },
+        "sublabel": {
+          "type": "string"
+        }
+      }
+    },
+    "tier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "color": {
+          "type": "string"
+        }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "type"
+      ],
+      "dependentRequired": {
+        "x": [
+          "y"
+        ],
+        "y": [
+          "x"
+        ]
+      },
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "client",
+            "cdn",
+            "lb",
+            "security",
+            "gateway",
+            "service",
+            "cache",
+            "database",
+            "queue",
+            "search",
+            "external",
+            "terminal",
+            "process",
+            "decision",
+            "data",
+            "sub",
+            "state",
+            "highlight",
+            "error"
+          ]
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "tier": {
+          "type": "string",
+          "minLength": 1
+        },
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "fontSize": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "shape": {
+          "enum": [
+            "rect",
+            "terminal",
+            "decision",
+            "data",
+            "subprocess",
+            "database",
+            "dashed-rect"
+          ]
+        },
+        "sublabel": {
+          "type": "string"
+        },
+        "style": {
+          "$ref": "#/$defs/style"
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string"
+        },
+        "dashed": {
+          "type": "boolean"
+        },
+        "fromAnchor": {
+          "enum": [
+            "top",
+            "right",
+            "bottom",
+            "left"
+          ]
+        },
+        "toAnchor": {
+          "enum": [
+            "top",
+            "right",
+            "bottom",
+            "left"
+          ]
+        }
+      }
+    },
+    "legendItem": {
+      "oneOf": [
+        {
+          "enum": [
+            "client",
+            "cdn",
+            "lb",
+            "security",
+            "gateway",
+            "service",
+            "cache",
+            "database",
+            "queue",
+            "search",
+            "external",
+            "terminal",
+            "process",
+            "decision",
+            "data",
+            "sub",
+            "state",
+            "highlight",
+            "error"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "label"
+          ],
+          "properties": {
+            "type": {
+              "enum": [
+                "client",
+                "cdn",
+                "lb",
+                "security",
+                "gateway",
+                "service",
+                "cache",
+                "database",
+                "queue",
+                "search",
+                "external",
+                "terminal",
+                "process",
+                "decision",
+                "data",
+                "sub",
+                "state",
+                "highlight",
+                "error"
+              ]
+            },
+            "label": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

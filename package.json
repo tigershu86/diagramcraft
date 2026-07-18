@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --test tests/*.test.mjs && node scripts/validate.mjs",
+    "test": "node --test tests/*.test.mjs && node scripts/generate-schema.mjs --check && node scripts/validate.mjs",
     "test:unit": "node --test tests/*.test.mjs",
     "validate": "node scripts/validate.mjs",
+    "schema:generate": "node scripts/generate-schema.mjs",
+    "schema:check": "node scripts/generate-schema.mjs --check",
     "package:skills": "bash scripts/package-skills.sh"
   },
   "engines": {
@@ -20,6 +22,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.0.3",
+    "ajv": "^8.17.1",
     "vite": "^8.1.5"
   }
 }

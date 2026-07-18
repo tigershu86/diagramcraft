@@ -133,6 +133,19 @@ test("validateDiagram rejects unsupported centralized node type, shape, and anch
   );
 });
 
+test("validateDiagram rejects unsafe node font sizes and styles used by the renderer", () => {
+  assert.deepEqual(
+    validateDiagram({
+      ...validDiagram,
+      nodes: [
+        { ...validDiagram.nodes[0], fontSize: "large", style: "highlight" },
+        validDiagram.nodes[1],
+      ],
+    }).map(({ code }) => code),
+    ["invalid-node-font-size", "invalid-node-style"],
+  );
+});
+
 test("normalizeDiagram applies presets without inventing omitted coordinates", () => {
   const normalized = normalizeDiagram({
     kind: "flowchart",

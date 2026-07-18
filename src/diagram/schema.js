@@ -152,6 +152,12 @@ export function validateDiagram(diagram, options = {}) {
     if (typeof node.label !== "string" || node.label.length === 0) issues.push(issue("invalid-node-label", `${nodePath}.label`, "node label must be a non-empty string"));
     if (typeof node.type !== "string" || !nodeTypes.has(node.type)) issues.push(issue("invalid-node-type", `${nodePath}.type`, "node type must be supported"));
     optionalString(issues, node.sublabel, "invalid-node-sublabel", `${nodePath}.sublabel`, "node sublabel must be a string");
+    if (node.fontSize !== undefined && !positiveNumber(node.fontSize)) {
+      issues.push(issue("invalid-node-font-size", `${nodePath}.fontSize`, "node fontSize must be a positive number"));
+    }
+    if (node.style !== undefined && (!node.style || typeof node.style !== "object" || Array.isArray(node.style))) {
+      issues.push(issue("invalid-node-style", `${nodePath}.style`, "node style must be an object"));
+    }
     if (node.shape !== undefined && !shapes.has(node.shape)) issues.push(issue("invalid-node-shape", `${nodePath}.shape`, "node shape must be supported"));
     for (const dimension of ["width", "height"]) {
       if (node[dimension] !== undefined && !positiveNumber(node[dimension])) {
