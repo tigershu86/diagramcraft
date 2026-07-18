@@ -42,6 +42,30 @@ test("routeEdge keeps short horizontal curves inside the gap between nodes", () 
   assert.equal(route.d, "M 100 40 C 110 40 110 40 120 40");
 });
 
+test("routeEdge sends feedback edges through the right-side gutter", () => {
+  const route = routeEdge(bottom, top, { route: "feedback", gutterX: 500 });
+
+  assert.equal(route.fromAnchor, "right");
+  assert.equal(route.toAnchor, "right");
+  assert.equal(route.d, "M 420 270 C 500 270 500 70 220 70");
+  assert.deepEqual(route.points, {
+    start: [420, 270],
+    control1: [500, 270],
+    control2: [500, 70],
+    end: [220, 70],
+  });
+  assert.deepEqual(route.labelPoint, cubicPoint(route.points, 0.5));
+});
+
+test("routeEdge derives a finite feedback gutter when gutterX is missing or invalid", () => {
+  for (const gutterX of [undefined, Number.NaN, Number.POSITIVE_INFINITY, "far-right"]) {
+    const route = routeEdge(bottom, top, { route: "feedback", gutterX });
+    assert.doesNotMatch(route.d, /NaN|Infinity/);
+    assert.ok(route.points.control1[0] >= 448);
+    assert.deepEqual(route.labelPoint, cubicPoint(route.points, 0.5));
+  }
+});
+
 test("nodeBoundsOverlap honors the requested safety gap", () => {
   const near = { x: 239, y: 40, width: 80, height: 60 };
   const far = { x: 241, y: 40, width: 80, height: 60 };
@@ -61,5 +85,5 @@ test("validateLayout reports out-of-bounds and overlapping nodes", () => {
     ],
   }, { padding: 0, gap: 0 });
 
-  assert.deepEqual(issues.map((issue) => issue.code), ["node-out-of-bounds", "node-overlap"]);
+  assert.deepEqual(issues.map((issue) => issue.code), ["layout-node-out-of-bounds", "layout-node-overlap"]);
 });

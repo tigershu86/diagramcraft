@@ -13,7 +13,9 @@ import {
   LOGIN_FLOW,
 } from "../examples/diagrams.js";
 import { DiagramRenderer } from "../src/diagram/DiagramRenderer.js";
-import { normalizeDiagram, validateDiagram } from "../src/diagram/schema.js";
+import { validateLayout } from "../src/diagram/geometry.js";
+import { prepareDiagram } from "../src/diagram/layout/index.js";
+import { validateDiagram } from "../src/diagram/schema.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const examples = [
@@ -26,8 +28,9 @@ test("all example diagrams satisfy the shared schema and render", () => {
   for (const [, diagram, expectedNodes] of examples) {
     assert.deepEqual(validateDiagram(diagram), []);
     assert.equal(diagram.nodes.length, expectedNodes);
-    const normalized = normalizeDiagram(diagram);
-    assert.ok(normalized.nodes.every((node) => node.width > 0 && node.height > 0));
+    const prepared = prepareDiagram(diagram);
+    assert.ok(prepared.nodes.every((node) => node.width > 0 && node.height > 0));
+    assert.deepEqual(validateLayout(prepared, { padding: 12, gap: 0 }), []);
     const html = renderToStaticMarkup(React.createElement(DiagramRenderer, { diagram }));
     assert.match(html, new RegExp(`<title[^>]*>${diagram.title}</title>`));
   }

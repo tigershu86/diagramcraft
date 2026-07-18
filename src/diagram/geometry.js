@@ -42,7 +42,36 @@ export function cubicPoint(points, t) {
   return [x, y];
 }
 
+export function edgeLabelWidth(label) {
+  return label ? Math.max(36, label.length * 6.2 + 14) : 0;
+}
+
 export function routeEdge(fromNode, toNode, edge = {}) {
+  if (edge.route === "feedback") {
+    const fromAnchor = "right";
+    const toAnchor = "right";
+    const start = anchorPoint(fromNode, fromAnchor);
+    const end = anchorPoint(toNode, toAnchor);
+    const gutterX = Math.max(
+      Number.isFinite(edge.gutterX) ? edge.gutterX : Number.NEGATIVE_INFINITY,
+      start[0] + 28,
+      end[0] + 28,
+    );
+    const points = {
+      start,
+      control1: [gutterX, start[1]],
+      control2: [gutterX, end[1]],
+      end,
+    };
+    return {
+      d: `M ${start[0]} ${start[1]} C ${gutterX} ${start[1]} ${gutterX} ${end[1]} ${end[0]} ${end[1]}`,
+      points,
+      fromAnchor,
+      toAnchor,
+      labelPoint: cubicPoint(points, 0.5),
+    };
+  }
+
   const inferred = inferAnchors(fromNode, toNode);
   const fromAnchor = edge.fromAnchor || inferred[0];
   const toAnchor = edge.toAnchor || inferred[1];
@@ -87,7 +116,7 @@ export function validateLayout(diagram, options = {}) {
       || node.x + node.width > diagram.width - padding
       || node.y + node.height > diagram.height - padding) {
       issues.push({
-        code: "node-out-of-bounds",
+        code: "layout-node-out-of-bounds",
         nodeIds: [node.id],
         message: `Node ${node.id} exceeds the canvas bounds`,
       });
@@ -97,7 +126,7 @@ export function validateLayout(diagram, options = {}) {
     for (let second = first + 1; second < diagram.nodes.length; second += 1) {
       if (nodeBoundsOverlap(diagram.nodes[first], diagram.nodes[second], gap)) {
         issues.push({
-          code: "node-overlap",
+          code: "layout-node-overlap",
           nodeIds: [diagram.nodes[first].id, diagram.nodes[second].id],
           message: `Nodes ${diagram.nodes[first].id} and ${diagram.nodes[second].id} overlap`,
         });

@@ -4,6 +4,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { DiagramRenderer } from "../src/diagram/DiagramRenderer.js";
+import { prepareDiagram } from "../src/diagram/layout/index.js";
 
 const diagram = {
   kind: "flowchart",
@@ -51,19 +52,66 @@ test("DiagramRenderer rejects invalid graph data before rendering", () => {
   );
 });
 
-test("DiagramRenderer rejects raw coordinate-free input before normalization", () => {
+test("DiagramRenderer prepares and renders a coordinate-free flow", () => {
+  const html = renderToStaticMarkup(React.createElement(DiagramRenderer, {
+    diagram: {
+      kind: "flowchart",
+      title: "Unprepared flow",
+      nodes: [
+        { id: "start", label: "Start", type: "terminal" },
+        { id: "finish", label: "Finish", type: "terminal" },
+      ],
+      edges: [{ from: "start", to: "finish" }],
+    },
+  }));
+
+  assert.match(html, /<svg[^>]+viewBox="0 0 \d+(?:\.\d+)? \d+(?:\.\d+)?"/);
+  assert.match(html, /aria-label="Start"/);
+  assert.match(html, /aria-label="Finish"/);
+  assert.doesNotMatch(html, /NaN|Infinity|undefined/);
+});
+
+test("DiagramRenderer renders cyclic feedback through the outer gutter", () => {
+  const html = renderToStaticMarkup(React.createElement(DiagramRenderer, {
+    diagram: {
+      kind: "flowchart",
+      title: "Cyclic flow",
+      nodes: [
+        { id: "first", label: "First", type: "process" },
+        { id: "second", label: "Second", type: "process" },
+      ],
+      edges: [{ from: "first", to: "second" }, { from: "second", to: "first", label: "again" }],
+    },
+  }));
+
+  assert.match(html, /M 410 172 C 664 172 664 60 410 60/);
+});
+
+test("DiagramRenderer consumes a prepared cyclic diagram", () => {
+  const prepared = prepareDiagram({
+    kind: "flowchart",
+    title: "Prepared cycle",
+    nodes: [
+      { id: "first", label: "First", type: "process" },
+      { id: "second", label: "Second", type: "process" },
+    ],
+    edges: [{ from: "first", to: "second" }, { from: "second", to: "first" }],
+  });
+  const html = renderToStaticMarkup(React.createElement(DiagramRenderer, { diagram: prepared }));
+
+  assert.match(html, /M 410 172 C 664 172 664 60 410 60/);
+  assert.doesNotMatch(html, /NaN|Infinity|undefined/);
+});
+
+test("DiagramRenderer rejects caller-supplied internal edge metadata", () => {
   assert.throws(
     () => renderToStaticMarkup(React.createElement(DiagramRenderer, {
       diagram: {
-        kind: "flowchart",
-        title: "Unprepared flow",
-        width: 320,
-        height: 180,
-        nodes: [{ id: "start", label: "Start", type: "terminal" }],
-        edges: [],
+        ...diagram,
+        edges: [{ from: "start", to: "approve", route: "feedback", gutterX: 9999 }],
       },
     })),
-    /unprepared-node-position/,
+    /unknown-edge-field[\s\S]*route[\s\S]*unknown-edge-field[\s\S]*gutterX/,
   );
 });
 
@@ -124,18 +172,18 @@ test("DiagramRenderer rejects non-string node sublabels before React renders the
   );
 });
 
-test("DiagramRenderer rejects manual tiers missing required geometry before rendering", () => {
+test("DiagramRenderer reports actionable preparation errors for invalid manual tiers", () => {
   assert.throws(
     () => renderToStaticMarkup(React.createElement(DiagramRenderer, {
       diagram: { ...diagram, tiers: [{ id: "missing-y", label: "Missing y", height: 40 }] },
     })),
-    /unprepared-tier-y/,
+    /layout-tier-y/,
   );
   assert.throws(
     () => renderToStaticMarkup(React.createElement(DiagramRenderer, {
       diagram: { ...diagram, tiers: [{ id: "missing-height", label: "Missing height", y: 0 }] },
     })),
-    /unprepared-tier-height/,
+    /layout-tier-height/,
   );
 });
 

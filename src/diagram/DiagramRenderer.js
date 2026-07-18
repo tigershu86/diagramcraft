@@ -1,7 +1,7 @@
 import React, { useId, useMemo, useState } from "react";
 
-import { routeEdge } from "./geometry.js";
-import { assertPreparedDiagram, normalizeDiagram } from "./schema.js";
+import { edgeLabelWidth, routeEdge } from "./geometry.js";
+import { prepareDiagram } from "./layout/index.js";
 import { NODE_STYLES, TOKENS, nodeStyle } from "./theme.js";
 
 const h = React.createElement;
@@ -175,7 +175,7 @@ function DiagramEdge({ edge, fromNode, toNode, selected, markerId, activeMarkerI
     && Math.abs(route.points.end[0] - route.points.start[0]) < 80
     && Math.abs(route.points.end[1] - route.points.start[1]) < 2;
   if (shortHorizontal) labelY = Math.min(fromNode.y, toNode.y) - 10;
-  const labelWidth = edge.label ? Math.max(36, edge.label.length * 6.2 + 14) : 0;
+  const labelWidth = edgeLabelWidth(edge.label);
 
   return h("g", {
     opacity: dimmed ? 0.16 : 1,
@@ -263,7 +263,7 @@ export function DiagramRenderer({
   showLegend = true,
   showHint = true,
 }) {
-  const diagram = useMemo(() => assertPreparedDiagram(input), [input]);
+  const diagram = useMemo(() => prepareDiagram(input), [input]);
   const [hovered, setHovered] = useState(null);
   const [selected, setSelected] = useState(initialSelectedId);
   const reactId = useId().replace(/:/g, "");

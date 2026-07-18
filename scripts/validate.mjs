@@ -8,7 +8,8 @@ import {
   LOGIN_FLOW,
 } from "../examples/diagrams.js";
 import { validateLayout } from "../src/diagram/geometry.js";
-import { normalizeDiagram, validateDiagram } from "../src/diagram/schema.js";
+import { prepareDiagram } from "../src/diagram/layout/index.js";
+import { validateDiagram } from "../src/diagram/schema.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SKILLS = ["arch-diagram", "flowchart"];
@@ -115,12 +116,19 @@ for (const [relativePath, source] of architectureArtifacts) {
 
 for (const [relativePath, diagram] of EXAMPLES) {
   const source = read(relativePath);
-  for (const issue of validateDiagram(diagram)) {
+  const rawIssues = validateDiagram(diagram);
+  for (const issue of rawIssues) {
     check(false, `${relativePath}: ${issue.code} at ${issue.path}: ${issue.message}`);
   }
-  const normalized = normalizeDiagram(diagram);
-  for (const issue of validateLayout(normalized, { padding: 12, gap: 0 })) {
-    check(false, `${relativePath}: ${issue.code}: ${issue.message}`);
+  if (rawIssues.length === 0) {
+    try {
+      const prepared = prepareDiagram(diagram);
+      for (const issue of validateLayout(prepared, { padding: 12, gap: 0 })) {
+        check(false, `${relativePath}: ${issue.code}: ${issue.message}`);
+      }
+    } catch (error) {
+      check(false, `${relativePath}: ${error.message}`);
+    }
   }
   check(source.includes("DiagramRenderer"),
     `${relativePath}: example must use the shared DiagramRenderer`);

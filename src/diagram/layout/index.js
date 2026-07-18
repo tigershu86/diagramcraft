@@ -1,5 +1,5 @@
 import { hasOwnPosition } from "../contract.js";
-import { nodeBoundsOverlap, validateLayout } from "../geometry.js";
+import { edgeLabelWidth, nodeBoundsOverlap, routeEdge, validateLayout } from "../geometry.js";
 import { normalizeDiagram } from "../schema.js";
 import { ARCHITECTURE_LAYOUT, layoutArchitecture } from "./architecture.js";
 import { layoutFlowchart } from "./flowchart.js";
@@ -8,6 +8,22 @@ const CANVAS_PADDING = 24;
 const FEEDBACK_MARGIN = 60;
 const TIER_GEOMETRY_FIELDS = ["x", "y", "width", "height"];
 const VALID_MODES = new Set(["missing", "force"]);
+const INTERNAL_LAYOUTS = new WeakSet();
+
+function markInternalLayout(diagram) {
+  INTERNAL_LAYOUTS.add(diagram);
+  return diagram;
+}
+
+function rawLayoutInput(input) {
+  if (!INTERNAL_LAYOUTS.has(input)) return input;
+  return {
+    ...input,
+    edges: Array.isArray(input.edges)
+      ? input.edges.map(({ route: _route, gutterX: _gutterX, ...edge }) => edge)
+      : input.edges,
+  };
+}
 
 function automaticLayout(diagram) {
   if (diagram.kind === "architecture" && diagram.tiers.length > 0) {
@@ -80,11 +96,28 @@ function reserveHorizontalPosition(node, placed) {
 
 function fitFeedback(edges, nodes, width) {
   const maxRight = Math.max(0, ...nodes.map((node) => node.x + node.width));
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
   let fittedWidth = width;
   const fittedEdges = edges.map((edge) => {
     if (edge.route !== "feedback") return { ...edge };
-    const gutterX = Math.max(edge.gutterX, maxRight + FEEDBACK_MARGIN);
-    fittedWidth = Math.max(fittedWidth, gutterX + FEEDBACK_MARGIN);
+    let gutterX = Math.max(
+      Number.isFinite(edge.gutterX) ? edge.gutterX : Number.NEGATIVE_INFINITY,
+      maxRight + FEEDBACK_MARGIN,
+    );
+    const fromNode = nodeMap.get(edge.from);
+    const toNode = nodeMap.get(edge.to);
+    const labelWidth = edgeLabelWidth(edge.label);
+    let route = routeEdge(fromNode, toNode, { ...edge, gutterX });
+    const labelLeft = route.labelPoint[0] - labelWidth / 2;
+    if (labelLeft < 0) {
+      gutterX += -labelLeft / 0.75;
+      route = routeEdge(fromNode, toNode, { ...edge, gutterX });
+    }
+    fittedWidth = Math.max(
+      fittedWidth,
+      gutterX + FEEDBACK_MARGIN,
+      route.labelPoint[0] + labelWidth / 2,
+    );
     return { ...edge, gutterX };
   });
   return { edges: fittedEdges, width: fittedWidth };
@@ -216,13 +249,16 @@ export function layoutDiagram(input, { mode = "missing" } = {}) {
   if (!VALID_MODES.has(mode)) {
     throw new TypeError(`Invalid layout mode: ${mode}. Expected missing or force.`);
   }
-  const normalized = normalizeDiagram(input, { layout: mode });
+  const rawInput = rawLayoutInput(input);
+  const normalized = normalizeDiagram(rawInput, { layout: mode });
   const allPositioned = normalized.nodes.every(hasOwnPosition);
-  if (mode === "missing" && allPositioned) return fullyPositionedLayout(normalized, input);
+  if (mode === "missing" && allPositioned) {
+    return markInternalLayout(fullyPositionedLayout(normalized, rawInput));
+  }
 
   const ideal = automaticLayout(normalized);
-  if (mode === "force") return ideal;
-  return mixedLayout(normalized, input, ideal);
+  if (mode === "force") return markInternalLayout(ideal);
+  return markInternalLayout(mixedLayout(normalized, rawInput, ideal));
 }
 
 function effectiveTiers(diagram) {

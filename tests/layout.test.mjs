@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { ARCH_ECOMMERCE, ARCH_FLOWCHART_STYLE } from "../examples/diagrams.js";
-import { nodeBoundsOverlap } from "../src/diagram/geometry.js";
+import { nodeBoundsOverlap, routeEdge } from "../src/diagram/geometry.js";
 import { layoutArchitecture } from "../src/diagram/layout/architecture.js";
 import { layoutDiagram, prepareDiagram } from "../src/diagram/layout/index.js";
-import { normalizeDiagram } from "../src/diagram/schema.js";
+import { normalizeDiagram, validateDiagram } from "../src/diagram/schema.js";
 
 function deepFreeze(value) {
   if (value && typeof value === "object") {
@@ -349,6 +349,71 @@ test("prepareDiagram lays out a coordinate-free feedback flow with metadata", ()
   assert.ok(first.edges[2].gutterX > Math.max(...first.nodes.map((node) => node.x + node.width)));
 });
 
+test("prepareDiagram can deterministically re-prepare its own internal edge metadata", () => {
+  const input = {
+    kind: "flowchart",
+    title: "Repeatable feedback",
+    nodes: [
+      { id: "a", label: "A", type: "process" },
+      { id: "b", label: "B", type: "process" },
+    ],
+    edges: [{ from: "a", to: "b" }, { from: "b", to: "a" }],
+  };
+  const prepared = prepareDiagram(input);
+  const expected = structuredClone(prepared);
+  prepared.edges[1].gutterX = 1e12;
+
+  assert.deepEqual(prepareDiagram(prepared), expected);
+  assert.ok(validateDiagram(prepared).some(({ code, path }) => (
+    code === "unknown-edge-field" && path === "edges[1].route"
+  )));
+  assert.ok(validateDiagram(prepared).some(({ code, path }) => (
+    code === "unknown-edge-field" && path === "edges[1].gutterX"
+  )));
+});
+
+test("layoutDiagram can re-layout its own force-layout feedback metadata", () => {
+  const input = {
+    kind: "flowchart",
+    title: "Force feedback",
+    nodes: [
+      { id: "a", label: "A", type: "process" },
+      { id: "b", label: "B", type: "process" },
+    ],
+    edges: [{ from: "a", to: "b" }, { from: "b", to: "a" }],
+  };
+  const first = layoutDiagram(input, { mode: "force" });
+
+  assert.deepEqual(layoutDiagram(first, { mode: "force" }), first);
+});
+
+test("prepareDiagram keeps a long feedback label pill inside the canvas", () => {
+  const input = {
+    kind: "flowchart",
+    title: "Long feedback label",
+    nodes: [
+      { id: "a", label: "A", type: "process" },
+      { id: "b", label: "B", type: "process" },
+    ],
+    edges: [
+      { from: "a", to: "b" },
+      {
+        from: "b",
+        to: "a",
+        label: "Return to the beginning after the reviewer requests another complete revision cycle and include every required follow-up note before requesting one more review",
+      },
+    ],
+  };
+  const prepared = prepareDiagram(input);
+  const edge = prepared.edges[1];
+  const nodeMap = new Map(prepared.nodes.map((node) => [node.id, node]));
+  const route = routeEdge(nodeMap.get(edge.from), nodeMap.get(edge.to), edge);
+  const width = Math.max(36, edge.label.length * 6.2 + 14);
+
+  assert.ok(route.labelPoint[0] - width / 2 >= 0);
+  assert.ok(route.labelPoint[0] + width / 2 <= prepared.width);
+});
+
 test("layout orchestration never mutates deep-frozen input", () => {
   const input = deepFreeze(structuredClone(architecture));
   const before = structuredClone(input);
@@ -369,10 +434,14 @@ test("prepareDiagram reports every fixed-node overlap with layout codes", () => 
     ],
     edges: [],
   };
-  assert.throws(
-    () => prepareDiagram(input),
-    /layout-node-overlap[\s\S]*a, b[\s\S]*layout-node-overlap[\s\S]*a, c[\s\S]*layout-node-overlap[\s\S]*b, c/,
-  );
+  assert.throws(() => prepareDiagram(input), (error) => {
+    assert.match(
+      error.message,
+      /layout-node-overlap[\s\S]*a, b[\s\S]*layout-node-overlap[\s\S]*a, c[\s\S]*layout-node-overlap[\s\S]*b, c/,
+    );
+    assert.doesNotMatch(error.message, /layout-layout-/);
+    return true;
+  });
 });
 
 test("layout mode and architecture tier errors are actionable", () => {
