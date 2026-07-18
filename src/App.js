@@ -6,6 +6,8 @@ import {
   LOGIN_FLOW,
 } from "../examples/diagrams.js";
 import { DiagramRenderer } from "./diagram/DiagramRenderer.js";
+import { downloadDiagramPng, downloadDiagramSvg } from "./diagram/export.js";
+import { layoutDiagram } from "./diagram/layout/index.js";
 
 const h = React.createElement;
 
@@ -23,6 +25,18 @@ export function tabIdForKey(activeId, key) {
   if (key === "ArrowLeft") return EXAMPLE_OPTIONS[(index - 1 + EXAMPLE_OPTIONS.length) % EXAMPLE_OPTIONS.length].id;
   if (key === "ArrowRight") return EXAMPLE_OPTIONS[(index + 1) % EXAMPLE_OPTIONS.length].id;
   return null;
+}
+
+export function setExampleOverride(overrides, id, diagram) {
+  const next = { ...overrides };
+  if (diagram) next[id] = diagram;
+  else delete next[id];
+  return next;
+}
+
+export function formatActionError(error) {
+  if (error instanceof Error && error.message) return error.message;
+  return error ? String(error) : "未知错误";
 }
 
 function ProductHeader() {
@@ -75,7 +89,50 @@ function ExampleTabs({ activeId, onChange }) {
 
 export default function App() {
   const [activeId, setActiveId] = useState(EXAMPLE_OPTIONS[0].id);
+  const [overrides, setOverrides] = useState({});
+  const [status, setStatus] = useState("");
+  const [pngBusy, setPngBusy] = useState(false);
   const active = EXAMPLE_OPTIONS.find((option) => option.id === activeId) || EXAMPLE_OPTIONS[0];
+  const hasOverride = Boolean(overrides[active.id]);
+  const visibleDiagram = overrides[active.id] || active.diagram;
+
+  const toggleLayout = () => {
+    if (hasOverride) {
+      setOverrides((current) => setExampleOverride(current, active.id, null));
+      setStatus("已恢复原布局");
+      return;
+    }
+
+    try {
+      const diagram = layoutDiagram(active.diagram, { mode: "force" });
+      setOverrides((current) => setExampleOverride(current, active.id, diagram));
+      setStatus("已完成自动重排");
+    } catch (error) {
+      setStatus(`自动重排失败：${formatActionError(error)}`);
+    }
+  };
+
+  const exportSvg = () => {
+    try {
+      downloadDiagramSvg(visibleDiagram);
+      setStatus("SVG 已导出");
+    } catch (error) {
+      setStatus(`SVG 导出失败：${formatActionError(error)}`);
+    }
+  };
+
+  const exportPng = async () => {
+    setPngBusy(true);
+    setStatus("PNG 正在导出…");
+    try {
+      await downloadDiagramPng(visibleDiagram);
+      setStatus("PNG 已导出");
+    } catch (error) {
+      setStatus(`PNG 导出失败：${formatActionError(error)}`);
+    } finally {
+      setPngBusy(false);
+    }
+  };
 
   return h("main", { className: "app-shell" }, [
     h(ProductHeader, { key: "header" }),
@@ -85,7 +142,31 @@ export default function App() {
           h("h2", { key: "title" }, "Renderer preview"),
           h("p", { key: "description" }, "Switch datasets; rendering behavior stays shared."),
         ]),
-        h(ExampleTabs, { key: "tabs", activeId, onChange: setActiveId }),
+        h("div", { className: "toolbar-controls", key: "controls" }, [
+          h(ExampleTabs, { key: "tabs", activeId, onChange: setActiveId }),
+          h("div", {
+            className: "diagram-actions",
+            role: "group",
+            "aria-label": "Diagram actions",
+            key: "actions",
+          }, [
+            h("button", { type: "button", onClick: toggleLayout, key: "layout" },
+              hasOverride ? "恢复原布局" : "自动重排"),
+            h("button", { type: "button", onClick: exportSvg, key: "svg" }, "导出 SVG"),
+            h("button", {
+              type: "button",
+              onClick: exportPng,
+              disabled: pngBusy,
+              key: "png",
+            }, "导出 PNG"),
+          ]),
+          h("p", {
+            className: "action-status",
+            role: "status",
+            "aria-live": "polite",
+            key: "status",
+          }, status),
+        ]),
       ]),
       h("div", {
         className: "preview-panel",
@@ -93,7 +174,7 @@ export default function App() {
         role: "tabpanel",
         "aria-labelledby": `tab-${active.id}`,
         key: active.id,
-      }, h(DiagramRenderer, { diagram: active.diagram })),
+      }, h(DiagramRenderer, { diagram: visibleDiagram })),
     ]),
     h("footer", { className: "app-footer", key: "footer" },
       "Select a node with mouse, keyboard, or touch to trace its connections."),

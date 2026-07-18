@@ -172,6 +172,15 @@ button {
   font-size: 11px;
 }
 
+.toolbar-controls {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-content: end;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
 .example-tabs {
   display: flex;
   gap: 4px;
@@ -222,6 +231,64 @@ button {
   opacity: 0.7;
 }
 
+.diagram-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.diagram-actions button {
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid #4338ca;
+  border-radius: 8px;
+  color: #334155;
+  background: #ffffff;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease, color 150ms ease;
+}
+
+.diagram-actions button:first-child {
+  color: #ffffff;
+  background: #4f46e5;
+}
+
+.diagram-actions button:not(:first-child) {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+}
+
+.diagram-actions button:first-child:hover {
+  background: #4338ca;
+}
+
+.diagram-actions button:not(:first-child):hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.diagram-actions button:focus-visible {
+  outline: 3px solid rgba(99, 102, 241, 0.28);
+  outline-offset: 2px;
+}
+
+.diagram-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.workspace-toolbar .action-status {
+  grid-column: 1 / -1;
+  min-height: 14px;
+  margin: 0;
+  color: #475569;
+  font-weight: 650;
+  text-align: right;
+}
+
 .preview-panel {
   padding: 26px;
   background: #f8fafc;
@@ -262,6 +329,19 @@ button {
     min-width: 104px;
   }
 
+  .toolbar-controls {
+    grid-template-columns: minmax(0, 1fr);
+    justify-content: stretch;
+  }
+
+  .diagram-actions {
+    flex-wrap: wrap;
+  }
+
+  .workspace-toolbar .action-status {
+    text-align: left;
+  }
+
   .preview-panel {
     padding: 18px 12px;
   }
@@ -291,6 +371,17 @@ button {
     border-right: 0;
     border-left: 0;
     border-radius: 0;
+  }
+
+  .diagram-actions {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .diagram-actions button {
+    flex: 0 0 auto;
+    min-height: 44px;
   }
 }
 
