@@ -39,6 +39,22 @@ const exportDiagram = {
   ],
 };
 
+async function captureRejection(promise) {
+  try {
+    return { rejected: false, value: await promise };
+  } catch (reason) {
+    return { rejected: true, reason };
+  }
+}
+
+function captureThrow(action) {
+  try {
+    return { threw: false, value: action() };
+  } catch (reason) {
+    return { threw: true, reason };
+  }
+}
+
 test("documentMetrics reserves title, scene, and multi-row legend bands", () => {
   const metrics = documentMetrics(exportDiagram);
 
@@ -490,6 +506,59 @@ test("rasterizeSvg throws a cleanup failure after a successful PNG encode", asyn
   );
 });
 
+test("rasterizeSvg rejects with the exact falsy value thrown while drawing", async () => {
+  for (const primary of [undefined, ""]) {
+    const image = {};
+    Object.defineProperty(image, "src", {
+      set() { queueMicrotask(() => image.onload()); },
+    });
+    const outcome = await captureRejection(rasterizeSvg("<svg/>", { width: 10, height: 10 }, {
+      createCanvas: () => ({
+        getContext: () => ({
+          fillRect() {},
+          drawImage() { throw primary; },
+        }),
+      }),
+      createImage: () => image,
+      createObjectURL: () => "blob:falsy-draw",
+      revokeObjectURL() {},
+    }));
+
+    assert.equal(outcome.rejected, true);
+    assert.equal(outcome.reason, primary);
+  }
+});
+
+test("rasterizeSvg aggregates a falsy draw failure with URL cleanup failure", async () => {
+  const events = [];
+  const image = {};
+  Object.defineProperty(image, "src", {
+    set() { queueMicrotask(() => image.onload()); },
+  });
+  const outcome = await captureRejection(rasterizeSvg("<svg/>", { width: 10, height: 10 }, {
+    createCanvas: () => ({
+      getContext: () => ({
+        fillRect() {},
+        drawImage() { throw undefined; },
+      }),
+    }),
+    createImage: () => image,
+    createObjectURL: () => "blob:falsy-cleanup",
+    revokeObjectURL() {
+      events.push("revoke");
+      throw new Error("falsy revoke failed");
+    },
+  }));
+
+  assert.equal(outcome.rejected, true);
+  assert.ok(outcome.reason instanceof AggregateError);
+  assert.equal(outcome.reason.message, "undefined");
+  assert.equal(outcome.reason.cause, undefined);
+  assert.equal(outcome.reason.errors[0], undefined);
+  assert.equal(outcome.reason.errors[1].message, "falsy revoke failed");
+  assert.deepEqual(events, ["revoke"]);
+});
+
 test("object URL direct dependencies must be provided as an atomic pair", () => {
   for (const direct of [
     { createObjectURL() { throw new Error("create called"); } },
@@ -667,6 +736,55 @@ test("downloadBlob throws cleanup failures even when append and click succeed", 
     }),
     /download revoke failed/,
   );
+});
+
+test("downloadBlob throws the exact null and zero values from link.click", () => {
+  for (const primary of [null, 0]) {
+    const outcome = captureThrow(() => downloadBlob(new Blob(["x"]), "x.svg", {
+      createObjectURL: () => "blob:falsy-click",
+      revokeObjectURL() {},
+      document: {
+        createElement: () => ({ click() { throw primary; }, remove() {} }),
+        body: { append() {} },
+      },
+    }));
+
+    assert.equal(outcome.threw, true);
+    assert.equal(outcome.reason, primary);
+  }
+});
+
+test("downloadBlob aggregates a falsy click failure and still attempts every cleanup", () => {
+  const events = [];
+  const outcome = captureThrow(() => downloadBlob(new Blob(["x"]), "x.svg", {
+    createObjectURL: () => "blob:falsy-download-cleanup",
+    revokeObjectURL() {
+      events.push("revoke");
+      throw new Error("falsy download revoke failed");
+    },
+    document: {
+      createElement: () => ({
+        click() {
+          events.push("click");
+          throw 0;
+        },
+        remove() {
+          events.push("remove");
+          throw new Error("falsy download remove failed");
+        },
+      }),
+      body: { append() { events.push("append"); } },
+    },
+  }));
+
+  assert.equal(outcome.threw, true);
+  assert.ok(outcome.reason instanceof AggregateError);
+  assert.equal(outcome.reason.message, "0");
+  assert.equal(outcome.reason.cause, 0);
+  assert.equal(outcome.reason.errors[0], 0);
+  assert.equal(outcome.reason.errors[1].message, "falsy download remove failed");
+  assert.equal(outcome.reason.errors[2].message, "falsy download revoke failed");
+  assert.deepEqual(events, ["append", "click", "remove", "revoke"]);
 });
 
 test("downloadBlob accepts documentApi and prefers it over the legacy document alias", () => {

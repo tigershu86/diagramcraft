@@ -262,12 +262,12 @@ function rasterPixelDimensions(dimensions) {
   return { width, height };
 }
 
-function throwOperationFailures(primary, cleanupErrors) {
-  if (!primary && cleanupErrors.length === 0) return;
-  if (primary && cleanupErrors.length === 0) throw primary;
-  if (!primary && cleanupErrors.length === 1) throw cleanupErrors[0];
-  const cause = primary ?? cleanupErrors[0];
-  const errors = primary ? [primary, ...cleanupErrors] : cleanupErrors;
+function throwOperationFailures(hasPrimary, primary, cleanupErrors) {
+  if (!hasPrimary && cleanupErrors.length === 0) return;
+  if (hasPrimary && cleanupErrors.length === 0) throw primary;
+  if (!hasPrimary && cleanupErrors.length === 1) throw cleanupErrors[0];
+  const cause = hasPrimary ? primary : cleanupErrors[0];
+  const errors = hasPrimary ? [primary, ...cleanupErrors] : cleanupErrors;
   const message = cause instanceof Error ? cause.message : String(cause);
   throw new AggregateError(errors, message, { cause });
 }
@@ -319,6 +319,7 @@ export async function rasterizeSvg(svg, dimensions, dependencies = {}) {
 
   const source = createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
   let result;
+  let hasPrimary = false;
   let primary;
   try {
     const image = createImage();
@@ -328,6 +329,7 @@ export async function rasterizeSvg(svg, dimensions, dependencies = {}) {
     context.drawImage(image, 0, 0, width, height);
     result = await encodePng(canvas);
   } catch (error) {
+    hasPrimary = true;
     primary = error;
   }
   const cleanupErrors = [];
@@ -336,7 +338,7 @@ export async function rasterizeSvg(svg, dimensions, dependencies = {}) {
   } catch (error) {
     cleanupErrors.push(error);
   }
-  throwOperationFailures(primary, cleanupErrors);
+  throwOperationFailures(hasPrimary, primary, cleanupErrors);
   return result;
 }
 
@@ -345,6 +347,7 @@ export function downloadBlob(blob, filename, dependencies = {}) {
   const documentApi = dependencies.documentApi ?? dependencies.document ?? globalThis.document;
   const source = createObjectURL(blob);
   let link;
+  let hasPrimary = false;
   let primary;
   try {
     link = documentApi.createElement("a");
@@ -353,6 +356,7 @@ export function downloadBlob(blob, filename, dependencies = {}) {
     documentApi.body.append(link);
     link.click();
   } catch (error) {
+    hasPrimary = true;
     primary = error;
   }
   const cleanupErrors = [];
@@ -366,7 +370,7 @@ export function downloadBlob(blob, filename, dependencies = {}) {
   } catch (error) {
     cleanupErrors.push(error);
   }
-  throwOperationFailures(primary, cleanupErrors);
+  throwOperationFailures(hasPrimary, primary, cleanupErrors);
 }
 
 export function downloadDiagramSvg(diagram, dependencies = {}) {
