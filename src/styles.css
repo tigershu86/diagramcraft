@@ -305,33 +305,19 @@ button {
   text-align: center;
 }
 
-@media (max-width: 820px) {
-  .app-shell {
-    width: min(100% - 24px, 1240px);
-    padding-top: 20px;
-  }
-
-  .product-header,
+@media (max-width: 1100px) {
   .workspace-toolbar {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .repo-facts span {
-    flex: 1;
+  .toolbar-controls {
+    grid-template-columns: minmax(0, 1fr);
+    justify-content: stretch;
   }
 
   .example-tabs {
     overflow-x: auto;
-  }
-
-  .example-tabs button {
-    min-width: 104px;
-  }
-
-  .toolbar-controls {
-    grid-template-columns: minmax(0, 1fr);
-    justify-content: stretch;
   }
 
   .diagram-actions {
@@ -340,6 +326,26 @@ button {
 
   .workspace-toolbar .action-status {
     text-align: left;
+  }
+}
+
+@media (max-width: 820px) {
+  .app-shell {
+    width: min(100% - 24px, 1240px);
+    padding-top: 20px;
+  }
+
+  .product-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .repo-facts span {
+    flex: 1;
+  }
+
+  .example-tabs button {
+    min-width: 104px;
   }
 
   .preview-panel {

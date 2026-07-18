@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import {
   ARCH_ECOMMERCE,
@@ -35,8 +35,13 @@ export function setExampleOverride(overrides, id, diagram) {
 }
 
 export function formatActionError(error) {
-  if (error instanceof Error && error.message) return error.message;
-  return error ? String(error) : "未知错误";
+  if (error instanceof Error) return error.message || "未知错误";
+  if (error === null || error === undefined || error === "") return "未知错误";
+  return String(error);
+}
+
+export function isCurrentActionRequest(currentToken, requestToken, mounted) {
+  return mounted && currentToken === requestToken;
 }
 
 function ProductHeader() {
@@ -92,11 +97,33 @@ export default function App() {
   const [overrides, setOverrides] = useState({});
   const [status, setStatus] = useState("");
   const [pngBusy, setPngBusy] = useState(false);
+  const actionRequestRef = useRef(0);
+  const mountedRef = useRef(true);
   const active = EXAMPLE_OPTIONS.find((option) => option.id === activeId) || EXAMPLE_OPTIONS[0];
   const hasOverride = Boolean(overrides[active.id]);
   const visibleDiagram = overrides[active.id] || active.diagram;
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      actionRequestRef.current += 1;
+    };
+  }, []);
+
+  const invalidatePngRequest = () => {
+    actionRequestRef.current += 1;
+    setPngBusy(false);
+  };
+
+  const selectExample = (id) => {
+    invalidatePngRequest();
+    setStatus("");
+    setActiveId(id);
+  };
+
   const toggleLayout = () => {
+    invalidatePngRequest();
     if (hasOverride) {
       setOverrides((current) => setExampleOverride(current, active.id, null));
       setStatus("已恢复原布局");
@@ -113,6 +140,7 @@ export default function App() {
   };
 
   const exportSvg = () => {
+    invalidatePngRequest();
     try {
       downloadDiagramSvg(visibleDiagram);
       setStatus("SVG 已导出");
@@ -122,15 +150,23 @@ export default function App() {
   };
 
   const exportPng = async () => {
+    const requestToken = actionRequestRef.current + 1;
+    actionRequestRef.current = requestToken;
     setPngBusy(true);
     setStatus("PNG 正在导出…");
     try {
       await downloadDiagramPng(visibleDiagram);
-      setStatus("PNG 已导出");
+      if (isCurrentActionRequest(actionRequestRef.current, requestToken, mountedRef.current)) {
+        setStatus("PNG 已导出");
+      }
     } catch (error) {
-      setStatus(`PNG 导出失败：${formatActionError(error)}`);
+      if (isCurrentActionRequest(actionRequestRef.current, requestToken, mountedRef.current)) {
+        setStatus(`PNG 导出失败：${formatActionError(error)}`);
+      }
     } finally {
-      setPngBusy(false);
+      if (isCurrentActionRequest(actionRequestRef.current, requestToken, mountedRef.current)) {
+        setPngBusy(false);
+      }
     }
   };
 
@@ -143,7 +179,7 @@ export default function App() {
           h("p", { key: "description" }, "Switch datasets; rendering behavior stays shared."),
         ]),
         h("div", { className: "toolbar-controls", key: "controls" }, [
-          h(ExampleTabs, { key: "tabs", activeId, onChange: setActiveId }),
+          h(ExampleTabs, { key: "tabs", activeId, onChange: selectExample }),
           h("div", {
             className: "diagram-actions",
             role: "group",

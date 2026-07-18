@@ -8,7 +8,14 @@ import * as AppModule from "../src/App.js";
 import { DiagramRenderer } from "../src/diagram/DiagramRenderer.js";
 import { layoutDiagram } from "../src/diagram/layout/index.js";
 
-const { default: App, EXAMPLE_OPTIONS, formatActionError, setExampleOverride, tabIdForKey } = AppModule;
+const {
+  default: App,
+  EXAMPLE_OPTIONS,
+  formatActionError,
+  isCurrentActionRequest,
+  setExampleOverride,
+  tabIdForKey,
+} = AppModule;
 const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 
 test("preview app exposes every example through an accessible tab list", () => {
@@ -95,7 +102,16 @@ test("force layout can be stored as an isolated override and rendered without mu
 test("formatActionError keeps action failures readable for Error and non-Error values", () => {
   assert.equal(formatActionError(new Error("boom")), "boom");
   assert.equal(formatActionError("network unavailable"), "network unavailable");
+  assert.equal(formatActionError(0), "0");
+  assert.equal(formatActionError(false), "false");
+  assert.equal(formatActionError(""), "未知错误");
   assert.equal(formatActionError(null), "未知错误");
+});
+
+test("isCurrentActionRequest accepts only the latest mounted request token", () => {
+  assert.equal(isCurrentActionRequest(4, 4, true), true);
+  assert.equal(isCurrentActionRequest(5, 4, true), false);
+  assert.equal(isCurrentActionRequest(4, 4, false), false);
 });
 
 test("action controls have high-contrast, responsive, keyboard-visible styling", () => {
@@ -108,7 +124,10 @@ test("action controls have high-contrast, responsive, keyboard-visible styling",
   assert.match(styles, /\.diagram-actions button:focus-visible\s*\{[^}]*3px solid rgba\(99,\s*102,\s*241,\s*0\.28\)/s);
   assert.match(styles, /\.diagram-actions button:disabled/);
   assert.match(styles, /\.action-status\s*\{/);
-  assert.match(styles, /@media \(max-width:\s*820px\)[\s\S]*?\.diagram-actions\s*\{[^}]*flex-wrap:\s*wrap/);
+  assert.match(styles, /@media \(max-width:\s*1100px\)[\s\S]*?\.workspace-toolbar\s*\{[^}]*flex-direction:\s*column/);
+  assert.match(styles, /@media \(max-width:\s*1100px\)[\s\S]*?\.toolbar-controls\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.match(styles, /@media \(max-width:\s*1100px\)[\s\S]*?\.example-tabs\s*\{[^}]*overflow-x:\s*auto/);
+  assert.match(styles, /@media \(max-width:\s*1100px\)[\s\S]*?\.diagram-actions\s*\{[^}]*flex-wrap:\s*wrap/);
   assert.match(styles, /@media \(max-width:\s*480px\)[\s\S]*?\.diagram-actions\s*\{[^}]*overflow-x:\s*auto/);
   assert.match(styles, /@media \(max-width:\s*480px\)[\s\S]*?\.diagram-actions button\s*\{[^}]*flex:\s*0 0 auto[^}]*min-height:\s*44px/);
 });
