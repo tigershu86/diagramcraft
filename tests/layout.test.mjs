@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { ARCH_ECOMMERCE, ARCH_FLOWCHART_STYLE } from "../examples/diagrams.js";
-import { nodeBoundsOverlap, routeEdge } from "../src/diagram/geometry.js";
+import { edgeLabelWidth, nodeBoundsOverlap, routeEdge } from "../src/diagram/geometry.js";
 import { layoutArchitecture } from "../src/diagram/layout/architecture.js";
 import { layoutDiagram, prepareDiagram } from "../src/diagram/layout/index.js";
 import { normalizeDiagram, validateDiagram } from "../src/diagram/schema.js";
@@ -31,6 +31,35 @@ function assertNoOverlap(nodes, gap = 0) {
       );
     }
   }
+}
+
+function assertFeedbackLabelPillFits(diagram) {
+  const edge = diagram.edges.find(({ route }) => route === "feedback");
+  const nodeMap = new Map(diagram.nodes.map((node) => [node.id, node]));
+  const route = routeEdge(nodeMap.get(edge.from), nodeMap.get(edge.to), edge);
+  const width = edgeLabelWidth(edge.label);
+
+  assert.ok(route.labelPoint[0] - width / 2 >= 0);
+  assert.ok(route.labelPoint[0] + width / 2 <= diagram.width);
+}
+
+function longFeedbackFlow() {
+  return {
+    kind: "flowchart",
+    title: "Long forced feedback label",
+    nodes: [
+      { id: "a", label: "A", type: "process" },
+      { id: "b", label: "B", type: "process" },
+    ],
+    edges: [
+      { from: "a", to: "b" },
+      {
+        from: "b",
+        to: "a",
+        label: "Return to the beginning after the reviewer requests another complete revision cycle and include every required follow-up note before requesting one more review",
+      },
+    ],
+  };
 }
 
 const architecture = {
@@ -328,6 +357,18 @@ test("force placement ignores old coordinates and tightly fits its result", () =
   assert.notDeepEqual(result.nodes.map(({ x, y }) => ({ x, y })), input.nodes.map(({ x, y }) => ({ x, y })));
   assert.ok(result.width < input.width && result.height < input.height);
   assertFiniteLayout(result);
+});
+
+test("force layout fits a long cyclic feedback label pill inside the canvas", () => {
+  const result = layoutDiagram(longFeedbackFlow(), { mode: "force" });
+
+  assertFeedbackLabelPillFits(result);
+});
+
+test("forced preparation fits a long cyclic feedback label pill inside the canvas", () => {
+  const result = prepareDiagram(longFeedbackFlow(), { layout: "force" });
+
+  assertFeedbackLabelPillFits(result);
 });
 
 test("prepareDiagram lays out a coordinate-free feedback flow with metadata", () => {

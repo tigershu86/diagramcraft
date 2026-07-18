@@ -257,7 +257,10 @@ export function layoutDiagram(input, { mode = "missing" } = {}) {
   }
 
   const ideal = automaticLayout(normalized);
-  if (mode === "force") return markInternalLayout(ideal);
+  if (mode === "force") {
+    const feedback = fitFeedback(ideal.edges, ideal.nodes, ideal.width);
+    return markInternalLayout({ ...ideal, width: feedback.width, edges: feedback.edges });
+  }
   return markInternalLayout(mixedLayout(normalized, rawInput, ideal));
 }
 
