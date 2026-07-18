@@ -75,10 +75,11 @@ function positions(rankOrder) {
 }
 
 function barycenter(id, edges, endpoint, rank, nodePositions, ranks, fallback) {
+  const adjacentRank = endpoint === "to" ? rank - 1 : rank + 1;
   const neighborIndexes = edges
     .filter((edge) => edge[endpoint] === id)
     .map((edge) => edge[endpoint === "to" ? "from" : "to"])
-    .filter((neighbor) => ranks.get(neighbor) !== rank)
+    .filter((neighbor) => ranks.get(neighbor) === adjacentRank)
     .map((neighbor) => nodePositions.get(neighbor)?.index)
     .filter(Number.isFinite);
   if (neighborIndexes.length === 0) return fallback;

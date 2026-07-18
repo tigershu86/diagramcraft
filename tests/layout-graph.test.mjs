@@ -64,6 +64,20 @@ test("orderRanks keeps branches deterministic across barycenter sweeps", () => {
   assert.deepEqual(second, first);
 });
 
+test("orderRanks ignores rank-skipping edges during adjacent-rank barycenter sweeps", () => {
+  const nodes = [
+    { id: "root" }, { id: "p0" }, { id: "p1" }, { id: "p2" }, { id: "a" }, { id: "b" },
+  ];
+  const edges = [
+    { from: "root", to: "p0" }, { from: "root", to: "p1" }, { from: "root", to: "p2" },
+    { from: "p2", to: "a" }, { from: "p1", to: "b" }, { from: "root", to: "a" },
+  ];
+  const { ranks, feedbackEdgeIndexes } = analyzeGraph(nodes, edges);
+  const ordered = orderRanks(nodes, edges, ranks, feedbackEdgeIndexes);
+
+  assert.deepEqual(rankIds(ordered)[2], ["b", "a"]);
+});
+
 test("analyzeGraph retains disconnected nodes in source order", () => {
   const nodes = [{ id: "a" }, { id: "b" }, { id: "lonely" }, { id: "c" }];
   const edges = [{ from: "a", to: "b" }, { from: "b", to: "c" }];
