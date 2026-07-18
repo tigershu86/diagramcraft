@@ -107,10 +107,7 @@ function fitFeedback(edges, nodes, width, height) {
   let fittedHeight = height;
   const fittedEdges = edges.map((edge) => {
     if (edge.route !== "feedback") return { ...edge };
-    let gutterX = Math.max(
-      Number.isFinite(edge.gutterX) ? edge.gutterX : Number.NEGATIVE_INFINITY,
-      maxRight + FEEDBACK_MARGIN,
-    );
+    let gutterX = maxRight + FEEDBACK_MARGIN;
     const fromNode = nodeMap.get(edge.from);
     const toNode = nodeMap.get(edge.to);
     let route = routeEdge(fromNode, toNode, { ...edge, gutterX });
@@ -418,9 +415,11 @@ function validateFiniteGeometry(diagram) {
   });
   const nodeMap = new Map(diagram.nodes.map((node) => [node.id, node]));
   diagram.edges.forEach((edge) => {
-    if (edge.route !== "feedback") return;
+    const feedback = edge.route === "feedback";
+    const edgeKind = feedback ? "feedback" : "edge";
+    const edgeDescription = feedback ? "Feedback edge" : "Edge";
     const nodeIds = [edge.from, edge.to];
-    if (!Number.isFinite(edge.gutterX)) {
+    if (feedback && !Number.isFinite(edge.gutterX)) {
       issues.push({
         code: "layout-feedback-gutter",
         nodeIds,
@@ -432,24 +431,24 @@ function validateFiniteGeometry(diagram) {
     const route = routeEdge(fromNode, toNode, edge);
     if (![route.points.control1, route.points.control2].flat().every(Number.isFinite)) {
       issues.push({
-        code: "layout-feedback-control",
+        code: `layout-${edgeKind}-control`,
         nodeIds,
-        message: `Feedback edge ${edge.from} to ${edge.to} controls must remain finite after layout`,
+        message: `${edgeDescription} ${edge.from} to ${edge.to} controls must remain finite after layout`,
       });
     }
     if (!Object.values(route.points).flat().every(Number.isFinite)) {
       issues.push({
-        code: "layout-feedback-path-bounds",
+        code: `layout-${edgeKind}-path-bounds`,
         nodeIds,
-        message: `Feedback edge ${edge.from} to ${edge.to} path bounds must remain finite after layout`,
+        message: `${edgeDescription} ${edge.from} to ${edge.to} path bounds must remain finite after layout`,
       });
     }
     const label = edgeLabelPosition(route, edge, fromNode, toNode);
     if (![label.left, label.right, label.top, label.bottom].every(Number.isFinite)) {
       issues.push({
-        code: "layout-feedback-label-bounds",
+        code: `layout-${edgeKind}-label-bounds`,
         nodeIds,
-        message: `Feedback edge ${edge.from} to ${edge.to} label bounds must remain finite after layout`,
+        message: `${edgeDescription} ${edge.from} to ${edge.to} label bounds must remain finite after layout`,
       });
     }
   });

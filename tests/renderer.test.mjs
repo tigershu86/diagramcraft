@@ -74,6 +74,33 @@ test("DiagramRenderer rejects non-finite derived geometry before producing SVG",
   );
 });
 
+test("DiagramRenderer rejects non-finite controls on an ordinary explicit-anchor edge", () => {
+  assert.throws(
+    () => renderToStaticMarkup(React.createElement(DiagramRenderer, {
+      diagram: {
+        kind: "flowchart",
+        title: "Overflowing explicit render",
+        width: Number.MAX_VALUE,
+        height: Number.MAX_VALUE,
+        nodes: [
+          { id: "near", label: "Near", type: "process", x: 20, y: 20, width: 20, height: 20 },
+          {
+            id: "far",
+            label: "Far",
+            type: "process",
+            x: Number.MAX_VALUE,
+            y: Number.MAX_VALUE,
+            width: 20,
+            height: 20,
+          },
+        ],
+        edges: [{ from: "near", to: "far", label: "far away", fromAnchor: "right", toAnchor: "left" }],
+      },
+    })),
+    /layout-edge-control[\s\S]*layout-edge-path-bounds[\s\S]*layout-edge-label-bounds/,
+  );
+});
+
 test("DiagramRenderer prepares and renders a coordinate-free flow", () => {
   const html = renderToStaticMarkup(React.createElement(DiagramRenderer, {
     diagram: {
@@ -106,7 +133,7 @@ test("DiagramRenderer renders cyclic feedback through the outer gutter", () => {
     },
   }));
 
-  assert.match(html, /M 410 172 C 664 172 664 60 410 60/);
+  assert.match(html, /M 410 172 C 470 172 470 60 410 60/);
 });
 
 test("DiagramRenderer renders a visible feedback self-loop without lifting its label above the canvas", () => {
@@ -121,7 +148,7 @@ test("DiagramRenderer renders a visible feedback self-loop without lifting its l
     },
   }));
 
-  assert.match(html, /M 40 10 C \d+(?:\.\d+)? 58 \d+(?:\.\d+)? 58 40 10/);
+  assert.match(html, /M 40 10 C \d+(?:\.\d+)? 10 \d+(?:\.\d+)? 58 40 10/);
   const pillY = Number(html.match(/<rect x="[^"]+" y="([^"]+)" width="[^"]+" height="18" rx="5"/)?.[1]);
   assert.ok(pillY >= 12);
 });
@@ -189,7 +216,7 @@ test("DiagramRenderer consumes a prepared cyclic diagram", () => {
   });
   const html = renderToStaticMarkup(React.createElement(DiagramRenderer, { diagram: prepared }));
 
-  assert.match(html, /M 410 172 C 664 172 664 60 410 60/);
+  assert.match(html, /M 410 172 C 470 172 470 60 410 60/);
   assert.doesNotMatch(html, /NaN|Infinity|undefined/);
 });
 

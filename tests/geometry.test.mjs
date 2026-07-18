@@ -64,10 +64,16 @@ test("routeEdge gives a feedback self-loop a visible downward arc", () => {
 
   assert.deepEqual(route.points.start, [40, 10]);
   assert.deepEqual(route.points.end, route.points.start);
-  assert.ok(route.points.control1[1] >= route.points.start[1] + 48);
-  assert.equal(route.points.control2[1], route.points.control1[1]);
+  assert.notDeepEqual(route.points.control1, route.points.control2);
+  assert.equal(route.points.control1[1], route.points.start[1]);
+  assert.ok(route.points.control2[1] >= route.points.start[1] + 48);
+  const [startX, startY] = route.points.start;
+  const [control1X, control1Y] = route.points.control1;
+  const [control2X, control2Y] = route.points.control2;
+  const crossProduct = (control1X - startX) * (control2Y - startY)
+    - (control1Y - startY) * (control2X - startX);
+  assert.notEqual(crossProduct, 0);
   assert.deepEqual(route.labelPoint, cubicPoint(route.points, 0.5));
-  assert.notEqual(route.points.control1[1], route.points.start[1]);
 });
 
 test("routeEdge derives a finite feedback gutter when gutterX is missing or invalid", () => {

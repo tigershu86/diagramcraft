@@ -62,6 +62,28 @@ function longFeedbackFlow() {
   };
 }
 
+function overflowingExplicitEdgeFlow() {
+  return {
+    kind: "flowchart",
+    title: "Overflowing explicit edge",
+    width: Number.MAX_VALUE,
+    height: Number.MAX_VALUE,
+    nodes: [
+      { id: "near", label: "Near", type: "process", x: 20, y: 20, width: 20, height: 20 },
+      {
+        id: "far",
+        label: "Far",
+        type: "process",
+        x: Number.MAX_VALUE,
+        y: Number.MAX_VALUE,
+        width: 20,
+        height: 20,
+      },
+    ],
+    edges: [{ from: "near", to: "far", label: "far away", fromAnchor: "right", toAnchor: "left" }],
+  };
+}
+
 function assertFeedbackScenePadding(diagram, padding = 12) {
   const edge = diagram.edges.find(({ route }) => route === "feedback");
   const nodeMap = new Map(diagram.nodes.map((node) => [node.id, node]));
@@ -414,6 +436,21 @@ test("manual self-loop expands the canvas for its path and label bounds", () => 
   assertFeedbackScenePadding(result);
 });
 
+test("tiny manual self-loop refits its gutter from the current nodes", () => {
+  const result = prepareDiagram({
+    kind: "flowchart",
+    title: "Compact self loop",
+    width: 120,
+    height: 80,
+    nodes: [{ id: "self", label: "Self", type: "process", x: 20, y: 0, width: 20, height: 20 }],
+    edges: [{ from: "self", to: "self", label: "again" }],
+  });
+
+  assert.equal(result.edges[0].gutterX, 100);
+  assert.ok(result.width < 250);
+  assertFeedbackScenePadding(result);
+});
+
 test("prepareDiagram aggregates non-finite derived node and feedback geometry", () => {
   const input = {
     kind: "flowchart",
@@ -450,6 +487,34 @@ test("prepareDiagram accepts large derived geometry that remains finite", () => 
 
   assert.ok(Number.isFinite(result.width));
   assert.ok(Number.isFinite(result.nodes[0].x + result.nodes[0].width));
+});
+
+test("prepareDiagram rejects non-finite derived geometry on an ordinary explicit-anchor edge", () => {
+  assert.throws(() => prepareDiagram(overflowingExplicitEdgeFlow()), (error) => {
+    assert.match(error.message, /layout-edge-control/);
+    assert.match(error.message, /layout-edge-path-bounds/);
+    assert.match(error.message, /layout-edge-label-bounds/);
+    return true;
+  });
+});
+
+test("prepareDiagram accepts finite explicit-anchor edge geometry", () => {
+  const result = prepareDiagram({
+    kind: "flowchart",
+    title: "Finite explicit edge",
+    width: 400,
+    height: 200,
+    nodes: [
+      { id: "left", label: "Left", type: "process", x: 20, y: 80, width: 80, height: 40 },
+      { id: "right", label: "Right", type: "process", x: 240, y: 80, width: 80, height: 40 },
+    ],
+    edges: [{ from: "left", to: "right", label: "event", fromAnchor: "right", toAnchor: "left" }],
+  });
+  const edge = result.edges[0];
+  const nodeMap = new Map(result.nodes.map((node) => [node.id, node]));
+  const route = routeEdge(nodeMap.get(edge.from), nodeMap.get(edge.to), edge);
+
+  assert.ok(Object.values(route.points).flat().every(Number.isFinite));
 });
 
 test("prepareDiagram lays out a coordinate-free feedback flow with metadata", () => {

@@ -98,13 +98,11 @@ export function routeEdge(fromNode, toNode, edge = {}) {
       start[0] + 28,
       end[0] + 28,
     );
-    const controlY = fromNode === toNode || fromNode.id === toNode.id
-      ? start[1] + 48
-      : null;
+    const selfLoop = fromNode === toNode || fromNode.id === toNode.id;
     const points = {
       start,
-      control1: [gutterX, controlY ?? start[1]],
-      control2: [gutterX, controlY ?? end[1]],
+      control1: [gutterX, start[1]],
+      control2: [gutterX, selfLoop ? start[1] + 48 : end[1]],
       end,
     };
     return {
