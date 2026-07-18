@@ -93,6 +93,7 @@ export function orderRanks(nodes = [], edges = [], ranks = new Map(), feedbackEd
   if (nodes.length === 0) return [];
 
   const indexes = sourceIndexes(nodes);
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
   const maxRank = Math.max(...nodes.map((node) => ranks.get(node.id) ?? 0));
   const rankOrder = Array.from({ length: maxRank + 1 }, () => []);
   nodes.forEach((node) => rankOrder[ranks.get(node.id) ?? 0].push(node.id));
@@ -115,5 +116,5 @@ export function orderRanks(nodes = [], edges = [], ranks = new Map(), feedbackEd
     ));
   }
 
-  return rankOrder;
+  return rankOrder.map((rank) => rank.map((id) => nodesById.get(id)));
 }

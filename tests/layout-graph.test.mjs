@@ -27,6 +27,10 @@ const cycleEdges = [
   { from: "error", to: "input" },
 ];
 
+function rankIds(rankOrder) {
+  return rankOrder.map((rank) => rank.map(({ id }) => id));
+}
+
 test("analyzeGraph identifies a DFS back edge and assigns main-flow ranks", () => {
   const analysis = analyzeGraph(cycleNodes, cycleEdges);
 
@@ -55,7 +59,8 @@ test("orderRanks keeps branches deterministic across barycenter sweeps", () => {
   const first = orderRanks(nodes, edges, ranks, feedbackEdgeIndexes);
   const second = orderRanks(nodes, edges, ranks, feedbackEdgeIndexes);
 
-  assert.deepEqual(first, [["start"], ["right", "left"], ["join"]]);
+  assert.equal(first[1][0], nodes[1]);
+  assert.deepEqual(rankIds(first), [["start"], ["right", "left"], ["join"]]);
   assert.deepEqual(second, first);
 });
 
@@ -65,7 +70,7 @@ test("analyzeGraph retains disconnected nodes in source order", () => {
   const analysis = analyzeGraph(nodes, edges);
 
   assert.deepEqual([...analysis.ranks], [["a", 0], ["b", 1], ["lonely", 0], ["c", 2]]);
-  assert.deepEqual(orderRanks(nodes, edges, analysis.ranks, analysis.feedbackEdgeIndexes), [
+  assert.deepEqual(rankIds(orderRanks(nodes, edges, analysis.ranks, analysis.feedbackEdgeIndexes)), [
     ["a", "lonely"], ["b"], ["c"],
   ]);
 });
@@ -108,7 +113,7 @@ test("layout operations do not mutate deep-frozen inputs", () => {
 
   assert.deepEqual(diagram, before);
   assert.notEqual(laidOut.nodes[0], diagram.nodes[0]);
-  assert.deepEqual(ordered, [["start"], ["input"], ["valid"], ["error"]]);
+  assert.deepEqual(rankIds(ordered), [["start"], ["input"], ["valid"], ["error"]]);
 });
 
 test("layoutFlowchart handles an empty graph safely", () => {

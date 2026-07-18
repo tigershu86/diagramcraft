@@ -14,19 +14,17 @@ export function layoutFlowchart(diagram) {
   const edges = diagram.edges ?? [];
   const { ranks, feedbackEdgeIndexes } = analyzeGraph(nodes, edges);
   const rankOrder = orderRanks(nodes, edges, ranks, feedbackEdgeIndexes);
-  const nodesById = new Map(nodes.map((node) => [node.id, node]));
   const rowWidths = rankOrder.map((rank) => (
-    rank.reduce((sum, id) => sum + nodesById.get(id).width, 0) + Math.max(0, rank.length - 1) * COLUMN_GAP
+    rank.reduce((sum, node) => sum + node.width, 0) + Math.max(0, rank.length - 1) * COLUMN_GAP
   ));
   const mainWidth = Math.max(MIN_MAIN_WIDTH, 0, ...rowWidths);
-  const rowHeights = rankOrder.map((rank) => Math.max(0, ...rank.map((id) => nodesById.get(id).height)));
+  const rowHeights = rankOrder.map((rank) => Math.max(0, ...rank.map((node) => node.height)));
   const positions = new Map();
   let y = OUTER;
   rankOrder.forEach((rank, rankIndex) => {
     let x = OUTER + (mainWidth - rowWidths[rankIndex]) / 2;
-    rank.forEach((id) => {
-      const node = nodesById.get(id);
-      positions.set(id, { x, y: y + (rowHeights[rankIndex] - node.height) / 2 });
+    rank.forEach((node) => {
+      positions.set(node.id, { x, y: y + (rowHeights[rankIndex] - node.height) / 2 });
       x += node.width + COLUMN_GAP;
     });
     y += rowHeights[rankIndex] + ROW_GAP;
