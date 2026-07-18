@@ -915,7 +915,7 @@ test("renderDiagramSvg lays out and exports a coordinate-free diagram", () => {
 });
 
 test("renderDiagramSvg keeps prepared ordinary edge geometry inside its standalone viewBox", () => {
-  const topLabelSvg = renderDiagramSvg({
+  const topLabelPrepared = prepareDiagram({
     kind: "flowchart",
     title: "Top short edge export",
     width: 400,
@@ -926,7 +926,7 @@ test("renderDiagramSvg keeps prepared ordinary edge geometry inside its standalo
     ],
     edges: [{ from: "left", to: "right", label: "event" }],
   });
-  const outwardSvg = renderDiagramSvg({
+  const outwardPrepared = prepareDiagram({
     kind: "flowchart",
     title: "Outward anchor export",
     width: 400,
@@ -943,6 +943,8 @@ test("renderDiagramSvg keeps prepared ordinary edge geometry inside its standalo
       toAnchor: "right",
     }],
   });
+  const topLabelSvg = renderDiagramSvg(JSON.parse(JSON.stringify(topLabelPrepared)));
+  const outwardSvg = renderDiagramSvg(JSON.parse(JSON.stringify(outwardPrepared)));
 
   assert.match(topLabelSvg, /<svg[^>]+width="400"[^>]+viewBox="0 0 400 [^"]+"/);
   assert.match(topLabelSvg, /<rect x="[^-][^"]*" y="0" width="[^-][^"]*" height="18" rx="5"/);

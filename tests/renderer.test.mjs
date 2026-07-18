@@ -239,6 +239,34 @@ test("DiagramRenderer consumes a prepared cyclic diagram", () => {
   assert.doesNotMatch(html, /NaN|Infinity|undefined/);
 });
 
+test("DiagramRenderer consumes structured-cloned bounded ordinary geometry", () => {
+  const prepared = prepareDiagram({
+    kind: "flowchart",
+    title: "Cloned bounded geometry",
+    width: 400,
+    height: 100,
+    nodes: [
+      { id: "left", label: "Left", type: "process", x: 0, y: 10, width: 180, height: 48 },
+      { id: "right", label: "Right", type: "process", x: 200, y: 10, width: 180, height: 48 },
+    ],
+    edges: [{
+      from: "left",
+      to: "right",
+      label: "outward",
+      fromAnchor: "left",
+      toAnchor: "right",
+    }],
+  });
+
+  const html = renderToStaticMarkup(React.createElement(DiagramRenderer, {
+    diagram: structuredClone(prepared),
+  }));
+
+  assert.match(html, /viewBox="0 0 400 100"/);
+  assert.match(html, /M 0 34 C 0 34 400 34 380 34/);
+  assert.doesNotMatch(html, /NaN|Infinity|undefined/);
+});
+
 test("DiagramRenderer rejects caller-supplied internal edge metadata", () => {
   assert.throws(
     () => renderToStaticMarkup(React.createElement(DiagramRenderer, {

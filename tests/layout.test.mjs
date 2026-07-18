@@ -110,8 +110,9 @@ function assertOrdinaryEdgeFits(diagram, edge = diagram.edges.find(({ route }) =
   const nodeMap = new Map(diagram.nodes.map((node) => [node.id, node]));
   const fromNode = nodeMap.get(edge.from);
   const toNode = nodeMap.get(edge.to);
-  const route = routeEdge(fromNode, toNode, edge);
-  const label = edgeLabelPosition(route, edge, fromNode, toNode);
+  const bounds = { width: diagram.width, height: diagram.height };
+  const route = routeEdge(fromNode, toNode, edge, bounds);
+  const label = edgeLabelPosition(route, edge, fromNode, toNode, bounds);
 
   for (const [name, [x, y]] of Object.entries(route.points)) {
     assert.ok(x >= 0 && x <= diagram.width, `${name}.x ${x} exceeds 0..${diagram.width}`);
@@ -620,6 +621,47 @@ test("ordinary edge fitting remains idempotent when a later label expands the ca
   assert.ok(prepared.width > input.width);
   prepared.edges.forEach((edge) => assertOrdinaryEdgeFits(prepared, edge));
   assert.deepEqual(prepareDiagram(prepared), prepared);
+});
+
+test("bounded ordinary edge geometry survives JSON and structured-clone round trips", () => {
+  const input = {
+    kind: "flowchart",
+    title: "Round-tripped bounded edges",
+    width: 400,
+    height: 100,
+    nodes: [
+      { id: "left", label: "Left", type: "process", x: 0, y: 10, width: 180, height: 48 },
+      { id: "right", label: "Right", type: "process", x: 200, y: 10, width: 180, height: 48 },
+    ],
+    edges: [
+      { from: "left", to: "right", label: "event" },
+      {
+        from: "left",
+        to: "right",
+        label: "outward",
+        fromAnchor: "left",
+        toAnchor: "right",
+      },
+    ],
+  };
+  const prepared = prepareDiagram(input);
+
+  prepared.edges.forEach((edge) => {
+    for (const field of ["control1", "control2", "labelPoint"]) {
+      assert.equal(Object.hasOwn(edge, field), false, `${field} leaked into a prepared edge`);
+    }
+  });
+
+  for (const roundTripped of [JSON.parse(JSON.stringify(prepared)), structuredClone(prepared)]) {
+    const reparsed = prepareDiagram(roundTripped);
+    reparsed.edges.forEach((edge) => assertOrdinaryEdgeFits(reparsed, edge));
+    assert.deepEqual(
+      reparsed.nodes.map(({ x, y }) => ({ x, y })),
+      input.nodes.map(({ x, y }) => ({ x, y })),
+    );
+    assert.equal(reparsed.edges[1].fromAnchor, "left");
+    assert.equal(reparsed.edges[1].toAnchor, "right");
+  }
 });
 
 test("prepareDiagram lays out a coordinate-free feedback flow with metadata", () => {

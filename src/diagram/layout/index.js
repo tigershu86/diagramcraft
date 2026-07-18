@@ -27,14 +27,7 @@ function rawLayoutInput(input) {
   return {
     ...input,
     edges: Array.isArray(input.edges)
-      ? input.edges.map(({
-        route: _route,
-        gutterX: _gutterX,
-        control1: _control1,
-        control2: _control2,
-        labelPoint: _labelPoint,
-        ...edge
-      }) => edge)
+      ? input.edges.map(({ route: _route, gutterX: _gutterX, ...edge }) => edge)
       : input.edges,
   };
 }
@@ -142,62 +135,22 @@ function fitFeedback(edges, nodes, width, height) {
   return { edges: fittedEdges, width: fittedWidth, height: fittedHeight };
 }
 
-function clamp(value, lower, upper) {
-  return Math.min(upper, Math.max(lower, value));
-}
-
-function samePoint(first, second) {
-  return first[0] === second[0] && first[1] === second[1];
-}
-
-function fitOrdinary(edges, nodes, width, height) {
-  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+function fitOrdinary(edges, width, height) {
   const labelMetrics = edges
     .filter((edge) => edge.route !== "feedback" && edge.label)
     .map((edge) => edgeLabelMetrics(edge.label));
   const fittedWidth = Math.max(width, ...labelMetrics.map(({ width: labelWidth }) => labelWidth));
   const fittedHeight = Math.max(height, ...labelMetrics.map(({ height: labelHeight }) => labelHeight));
-  const fittedEdges = edges.map((edge) => {
-    if (edge.route === "feedback") return { ...edge };
-    const fromNode = nodeMap.get(edge.from);
-    const toNode = nodeMap.get(edge.to);
-    const route = routeEdge(fromNode, toNode, edge);
-    if (!Number.isFinite(fittedWidth)
-      || !Number.isFinite(fittedHeight)
-      || !Object.values(route.points).flat().every(Number.isFinite)) {
-      return { ...edge };
-    }
-    // A cubic Bézier stays inside the convex hull of its endpoints and controls.
-    const control1 = [
-      clamp(route.points.control1[0], 0, fittedWidth),
-      clamp(route.points.control1[1], 0, fittedHeight),
-    ];
-    const control2 = [
-      clamp(route.points.control2[0], 0, fittedWidth),
-      clamp(route.points.control2[1], 0, fittedHeight),
-    ];
-    const controlsChanged = !samePoint(control1, route.points.control1)
-      || !samePoint(control2, route.points.control2);
-    const fittedEdge = controlsChanged ? { ...edge, control1, control2 } : { ...edge };
-    const fittedRoute = routeEdge(fromNode, toNode, fittedEdge);
-    const label = edgeLabelPosition(fittedRoute, fittedEdge, fromNode, toNode);
-    if (!edge.label || ![label.left, label.right, label.top, label.bottom].every(Number.isFinite)) {
-      return fittedEdge;
-    }
-    const labelPoint = [
-      clamp(label.x, label.width / 2, fittedWidth - label.width / 2),
-      clamp(label.y, label.height / 2, fittedHeight - label.height / 2),
-    ];
-    return samePoint(labelPoint, [label.x, label.y])
-      ? fittedEdge
-      : { ...fittedEdge, labelPoint };
-  });
-  return { edges: fittedEdges, width: fittedWidth, height: fittedHeight };
+  return {
+    edges: edges.map((edge) => ({ ...edge })),
+    width: fittedWidth,
+    height: fittedHeight,
+  };
 }
 
 function fitEdges(edges, nodes, width, height) {
   const feedback = fitFeedback(edges, nodes, width, height);
-  return fitOrdinary(feedback.edges, nodes, feedback.width, feedback.height);
+  return fitOrdinary(feedback.edges, feedback.width, feedback.height);
 }
 
 function tierRectangles(tiers, nodes, canvasWidth, { preserveSequenceGeometry = false } = {}) {
@@ -494,7 +447,8 @@ function validateFiniteGeometry(diagram) {
     }
     const fromNode = nodeMap.get(edge.from);
     const toNode = nodeMap.get(edge.to);
-    const route = routeEdge(fromNode, toNode, edge);
+    const bounds = { width: diagram.width, height: diagram.height };
+    const route = routeEdge(fromNode, toNode, edge, bounds);
     if (![route.points.control1, route.points.control2].flat().every(Number.isFinite)) {
       issues.push({
         code: `layout-${edgeKind}-control`,
@@ -509,7 +463,7 @@ function validateFiniteGeometry(diagram) {
         message: `${edgeDescription} ${edge.from} to ${edge.to} path bounds must remain finite after layout`,
       });
     }
-    const label = edgeLabelPosition(route, edge, fromNode, toNode);
+    const label = edgeLabelPosition(route, edge, fromNode, toNode, bounds);
     if (![label.left, label.right, label.top, label.bottom].every(Number.isFinite)) {
       issues.push({
         code: `layout-${edgeKind}-label-bounds`,

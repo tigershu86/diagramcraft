@@ -66,22 +66,45 @@ export function edgeLabelWidth(label) {
   return edgeLabelMetrics(label).width;
 }
 
-export function edgeLabelPosition(route, edge, fromNode, toNode, { padding = EDGE_SCENE_PADDING } = {}) {
+function clamp(value, lower, upper) {
+  return Math.min(upper, Math.max(lower, value));
+}
+
+function boundedCenter(value, size, extent, padding) {
+  if (!Number.isFinite(value)
+    || !Number.isFinite(size)
+    || !Number.isFinite(extent)
+    || extent < 0) return value;
+  const lower = padding + size / 2;
+  const upper = extent - padding - size / 2;
+  return lower <= upper ? clamp(value, lower, upper) : extent / 2;
+}
+
+function boundedCoordinate(value, extent) {
+  return Number.isFinite(value) && Number.isFinite(extent) && extent >= 0
+    ? clamp(value, 0, extent)
+    : value;
+}
+
+export function edgeLabelPosition(
+  route,
+  edge,
+  fromNode,
+  toNode,
+  { padding = EDGE_SCENE_PADDING, width, height } = {},
+) {
   const metrics = edgeLabelMetrics(edge.label);
-  const fittedLabelPoint = Array.isArray(edge.labelPoint)
-    && edge.labelPoint.length === 2
-    && edge.labelPoint.every(Number.isFinite)
-    ? edge.labelPoint
-    : null;
-  let [x, y] = fittedLabelPoint || route.labelPoint;
-  const shortHorizontal = !fittedLabelPoint
-    && edge.route !== "feedback"
+  let [x, y] = route.labelPoint;
+  const shortHorizontal = edge.route !== "feedback"
     && ["left", "right"].includes(route.fromAnchor)
     && ["left", "right"].includes(route.toAnchor)
     && Math.abs(route.points.end[0] - route.points.start[0]) < 80
     && Math.abs(route.points.end[1] - route.points.start[1]) < 2;
   if (shortHorizontal) y = Math.min(fromNode.y, toNode.y) - 10;
   if (edge.route === "feedback") y = Math.max(y, padding + metrics.height / 2);
+  const scenePadding = edge.route === "feedback" ? padding : 0;
+  x = boundedCenter(x, metrics.width, width, scenePadding);
+  y = boundedCenter(y, metrics.height, height, scenePadding);
   return {
     ...metrics,
     x,
@@ -93,7 +116,7 @@ export function edgeLabelPosition(route, edge, fromNode, toNode, { padding = EDG
   };
 }
 
-export function routeEdge(fromNode, toNode, edge = {}) {
+export function routeEdge(fromNode, toNode, edge = {}, { width, height } = {}) {
   if (edge.route === "feedback") {
     const fromAnchor = "right";
     const toAnchor = "right";
@@ -136,18 +159,18 @@ export function routeEdge(fromNode, toNode, edge = {}) {
       : Math.max(primaryDistance * 0.42, 28);
   const control1 = offsetPoint(start, fromAnchor, distance);
   const control2 = offsetPoint(end, toAnchor, distance);
-  const fittedControl1 = Array.isArray(edge.control1)
-    && edge.control1.length === 2
-    && edge.control1.every(Number.isFinite)
-    ? edge.control1
-    : control1;
-  const fittedControl2 = Array.isArray(edge.control2)
-    && edge.control2.length === 2
-    && edge.control2.every(Number.isFinite)
-    ? edge.control2
-    : control2;
-  const points = { start, control1: fittedControl1, control2: fittedControl2, end };
-  const d = `M ${start[0]} ${start[1]} C ${fittedControl1[0]} ${fittedControl1[1]} ${fittedControl2[0]} ${fittedControl2[1]} ${end[0]} ${end[1]}`;
+  // A cubic Bézier stays inside the convex hull of its endpoints and controls.
+  const boundedControl = ([x, y]) => [
+    boundedCoordinate(x, width),
+    boundedCoordinate(y, height),
+  ];
+  const points = {
+    start,
+    control1: boundedControl(control1),
+    control2: boundedControl(control2),
+    end,
+  };
+  const d = `M ${start[0]} ${start[1]} C ${points.control1[0]} ${points.control1[1]} ${points.control2[0]} ${points.control2[1]} ${end[0]} ${end[1]}`;
 
   return {
     d,

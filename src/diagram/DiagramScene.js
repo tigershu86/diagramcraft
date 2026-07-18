@@ -166,13 +166,24 @@ function DiagramNode({ node, hovered, selected, onHover, onSelect, interactive, 
   ]);
 }
 
-function DiagramEdge({ edge, fromNode, toNode, selected, interactive, markerId, selectedMarkerId }) {
-  const route = routeEdge(fromNode, toNode, edge);
+function DiagramEdge({
+  edge,
+  fromNode,
+  toNode,
+  selected,
+  interactive,
+  markerId,
+  selectedMarkerId,
+  width,
+  height,
+}) {
+  const bounds = { width, height };
+  const route = routeEdge(fromNode, toNode, edge, bounds);
   const connected = selected === edge.from || selected === edge.to;
   const dimmed = Boolean(selected && !connected);
   const fromStyle = nodeStyle(fromNode);
   const stroke = connected ? fromStyle.accent : edge.dashed ? TOKENS.edgeMuted : TOKENS.edge;
-  const label = edgeLabelPosition(route, edge, fromNode, toNode);
+  const label = edgeLabelPosition(route, edge, fromNode, toNode, bounds);
 
   return h("g", {
     opacity: dimmed ? 0.16 : 1,
@@ -284,6 +295,8 @@ export function DiagramScene({
       interactive,
       markerId,
       selectedMarkerId: `${activeMarkerId}-${index}`,
+      width: diagram.width,
+      height: diagram.height,
     })),
     ...diagram.nodes.map((node, index) => h(DiagramNode, {
       key: node.id,

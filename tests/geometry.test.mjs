@@ -5,6 +5,7 @@ import {
   anchorPoint,
   cubicPoint,
   edgeLabelMetrics,
+  edgeLabelPosition,
   nodeBoundsOverlap,
   routeEdge,
   validateLayout,
@@ -33,6 +34,37 @@ test("routeEdge respects explicit horizontal anchors", () => {
   const route = routeEdge(top, bottom, { fromAnchor: "right", toAnchor: "left" });
 
   assert.equal(route.d, "M 220 70 C 319.0870324512749 70 200.9129675487251 270 300 270");
+});
+
+test("routeEdge derives bounded ordinary controls without changing its unbounded semantics", () => {
+  const left = { id: "left", x: 0, y: 10, width: 180, height: 48 };
+  const right = { id: "right", x: 200, y: 10, width: 180, height: 48 };
+  const edge = { fromAnchor: "left", toAnchor: "right" };
+  const unbounded = routeEdge(left, right, edge);
+  const bounded = routeEdge(left, right, edge, { width: 400, height: 100 });
+
+  assert.ok(unbounded.points.control1[0] < 0);
+  assert.ok(unbounded.points.control2[0] > 400);
+  assert.deepEqual(bounded.points.control1, [0, 34]);
+  assert.deepEqual(bounded.points.control2, [400, 34]);
+  assert.deepEqual(bounded.points.start, unbounded.points.start);
+  assert.deepEqual(bounded.points.end, unbounded.points.end);
+  assert.equal(bounded.fromAnchor, "left");
+  assert.equal(bounded.toAnchor, "right");
+});
+
+test("edgeLabelPosition derives a bounded short-edge pill from canvas dimensions", () => {
+  const left = { id: "left", x: 0, y: 10, width: 180, height: 48 };
+  const right = { id: "right", x: 200, y: 10, width: 180, height: 48 };
+  const edge = { label: "event" };
+  const route = routeEdge(left, right, edge, { width: 400, height: 100 });
+  const unbounded = edgeLabelPosition(route, edge, left, right);
+  const bounded = edgeLabelPosition(route, edge, left, right, { width: 400, height: 100 });
+
+  assert.equal(unbounded.top, -9);
+  assert.equal(bounded.top, 0);
+  assert.ok(bounded.left >= 0 && bounded.right <= 400);
+  assert.ok(bounded.bottom <= 100);
 });
 
 test("routeEdge keeps short horizontal curves inside the gap between nodes", () => {
