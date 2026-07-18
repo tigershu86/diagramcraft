@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -276,6 +277,71 @@ test("rasterizeSvg rounds fractional doubled dimensions to positive pixel intege
   assert.equal(canvas.height, 8);
 });
 
+test("rasterizeSvg rejects unsafe canvas capacities before allocating a URL", async () => {
+  const cases = [
+    [{ width: Number.MAX_VALUE, height: 1 }, /finite|safe integer/i],
+    [{ width: 16_384, height: 0.5 }, /maximum dimension|32767/i],
+    [{ width: 2_048.5, height: 2_048 }, /maximum area|16777216/i],
+  ];
+
+  for (const [dimensions, message] of cases) {
+    let urlAllocations = 0;
+    await assert.rejects(
+      () => rasterizeSvg("<svg/>", dimensions, {
+        createCanvas: () => ({ getContext: () => ({}) }),
+        createObjectURL() { urlAllocations += 1; return "blob:unsafe"; },
+        revokeObjectURL() {},
+      }),
+      message,
+    );
+    assert.equal(urlAllocations, 0);
+  }
+});
+
+test("rasterizeSvg rejects a canvas that cannot retain the requested dimensions before URL allocation", async () => {
+  let urlAllocations = 0;
+  const canvas = {
+    get width() { return 0; },
+    set width(_value) {},
+    get height() { return 0; },
+    set height(_value) {},
+    getContext: () => ({ mind: "unused" }),
+  };
+
+  await assert.rejects(
+    () => rasterizeSvg("<svg/>", { width: 100, height: 50 }, {
+      createCanvas: () => canvas,
+      createObjectURL() { urlAllocations += 1; return "blob:zero"; },
+      revokeObjectURL() {},
+    }),
+    /Unable to allocate 200x100 PNG canvas/,
+  );
+  assert.equal(urlAllocations, 0);
+});
+
+test("rasterizeSvg accepts canvas dimension and area boundaries", async () => {
+  for (const dimensions of [
+    { width: 16_383.5, height: 0.5 },
+    { width: 2_048, height: 2_048 },
+  ]) {
+    const canvas = {
+      getContext: () => ({ fillRect() {}, drawImage() {} }),
+      toBlob: (callback) => callback(new Blob(["png"], { type: "image/png" })),
+    };
+    const image = {};
+    Object.defineProperty(image, "src", {
+      set() { queueMicrotask(() => image.onload()); },
+    });
+
+    await rasterizeSvg("<svg/>", dimensions, {
+      createCanvas: () => canvas,
+      createImage: () => image,
+      createObjectURL: () => "blob:boundary",
+      revokeObjectURL() {},
+    });
+  }
+});
+
 test("rasterizeSvg reports a missing 2D context without creating or revoking a URL", async () => {
   let created = 0;
   let revoked = 0;
@@ -358,6 +424,131 @@ test("rasterizeSvg revokes the SVG URL when drawing or PNG encoding fails", asyn
   }
 });
 
+test("rasterizeSvg preserves decode, draw, and encode failures when URL cleanup also fails", async () => {
+  for (const mode of ["decode", "draw", "encode"]) {
+    const image = {};
+    Object.defineProperty(image, "src", {
+      set() {
+        queueMicrotask(() => {
+          if (mode === "decode") image.onerror();
+          else image.onload();
+        });
+      },
+    });
+    const context = {
+      fillRect() {},
+      drawImage() {
+        if (mode === "draw") throw new Error("draw primary failed");
+      },
+    };
+    const canvas = {
+      getContext: () => context,
+      toBlob(callback) { callback(mode === "encode" ? null : new Blob(["png"])); },
+    };
+
+    await assert.rejects(
+      () => rasterizeSvg("<svg/>", { width: 10, height: 10 }, {
+        createCanvas: () => canvas,
+        createImage: () => image,
+        createObjectURL: () => `blob:${mode}`,
+        revokeObjectURL() { throw new Error(`${mode} cleanup failed`); },
+      }),
+      (error) => {
+        const primary = mode === "decode"
+          ? "Unable to decode the SVG for PNG export"
+          : mode === "draw"
+            ? "draw primary failed"
+            : "Unable to encode the PNG export";
+        assert.match(error.message, new RegExp(primary));
+        assert.equal(error.cause?.message, primary);
+        assert.deepEqual(error.errors?.map((entry) => entry.message), [
+          primary,
+          `${mode} cleanup failed`,
+        ]);
+        return true;
+      },
+    );
+  }
+});
+
+test("rasterizeSvg throws a cleanup failure after a successful PNG encode", async () => {
+  const image = {};
+  Object.defineProperty(image, "src", {
+    set() { queueMicrotask(() => image.onload()); },
+  });
+  await assert.rejects(
+    () => rasterizeSvg("<svg/>", { width: 10, height: 10 }, {
+      createCanvas: () => ({
+        getContext: () => ({ fillRect() {}, drawImage() {} }),
+        toBlob: (callback) => callback(new Blob(["png"])),
+      }),
+      createImage: () => image,
+      createObjectURL: () => "blob:cleanup",
+      revokeObjectURL() { throw new Error("revoke cleanup failed"); },
+    }),
+    /revoke cleanup failed/,
+  );
+});
+
+test("object URL direct dependencies must be provided as an atomic pair", () => {
+  for (const direct of [
+    { createObjectURL() { throw new Error("create called"); } },
+    { revokeObjectURL() { throw new Error("revoke called"); } },
+  ]) {
+    let urlApiCalls = 0;
+    assert.throws(
+      () => downloadBlob(new Blob(["x"]), "x.svg", {
+        ...direct,
+        urlApi: {
+          createObjectURL() { urlApiCalls += 1; return "blob:mixed"; },
+          revokeObjectURL() { urlApiCalls += 1; },
+        },
+        document: { createElement() { throw new Error("document called"); } },
+      }),
+      /createObjectURL and revokeObjectURL must be provided together/,
+    );
+    assert.equal(urlApiCalls, 0);
+  }
+});
+
+test("object URL dependencies use a complete bound urlApi when direct methods are absent", () => {
+  const events = [];
+  const urlApi = {
+    createObjectURL() {
+      assert.equal(this, urlApi);
+      events.push("create");
+      return "blob:url-api";
+    },
+    revokeObjectURL(source) {
+      assert.equal(this, urlApi);
+      events.push(`revoke:${source}`);
+    },
+  };
+  const link = { click() { events.push("click"); }, remove() { events.push("remove"); } };
+
+  downloadBlob(new Blob(["x"]), "x.svg", {
+    urlApi,
+    document: {
+      createElement: () => link,
+      body: { append() { events.push("append"); } },
+    },
+  });
+
+  assert.deepEqual(events, ["create", "append", "click", "remove", "revoke:blob:url-api"]);
+});
+
+test("object URL dependencies reject an incomplete urlApi without invoking it", () => {
+  let calls = 0;
+  assert.throws(
+    () => downloadBlob(new Blob(["x"]), "x.svg", {
+      urlApi: { createObjectURL() { calls += 1; return "blob:incomplete"; } },
+      document: { createElement() { calls += 1; return {}; } },
+    }),
+    /URL API requires createObjectURL and revokeObjectURL functions/,
+  );
+  assert.equal(calls, 0);
+});
+
 test("downloadBlob clicks a temporary link and cleans it up in order", () => {
   const events = [];
   const link = {
@@ -417,6 +608,82 @@ test("downloadBlob revokes its URL and removes any created link on setup or clic
   }
 });
 
+test("downloadBlob preserves append and click failures while reporting every cleanup failure", () => {
+  for (const mode of ["append", "click"]) {
+    const events = [];
+    const link = {
+      click() {
+        events.push("click");
+        if (mode === "click") throw new Error("click primary failed");
+      },
+      remove() {
+        events.push("remove");
+        throw new Error("remove cleanup failed");
+      },
+    };
+
+    assert.throws(
+      () => downloadBlob(new Blob(["x"]), "x.svg", {
+        createObjectURL: () => "blob:aggregate",
+        revokeObjectURL() {
+          events.push("revoke");
+          throw new Error("revoke cleanup failed");
+        },
+        document: {
+          createElement: () => link,
+          body: {
+            append() {
+              events.push("append");
+              if (mode === "append") throw new Error("append primary failed");
+            },
+          },
+        },
+      }),
+      (error) => {
+        const primary = `${mode} primary failed`;
+        assert.equal(error.message, primary);
+        assert.equal(error.cause?.message, primary);
+        assert.deepEqual(error.errors?.map((entry) => entry.message), [
+          primary,
+          "remove cleanup failed",
+          "revoke cleanup failed",
+        ]);
+        return true;
+      },
+    );
+    assert.deepEqual(events, mode === "append"
+      ? ["append", "remove", "revoke"]
+      : ["append", "click", "remove", "revoke"]);
+  }
+});
+
+test("downloadBlob throws cleanup failures even when append and click succeed", () => {
+  const link = { click() {}, remove() {} };
+  assert.throws(
+    () => downloadBlob(new Blob(["x"]), "x.svg", {
+      createObjectURL: () => "blob:cleanup-only",
+      revokeObjectURL() { throw new Error("download revoke failed"); },
+      document: { createElement: () => link, body: { append() {} } },
+    }),
+    /download revoke failed/,
+  );
+});
+
+test("downloadBlob accepts documentApi and prefers it over the legacy document alias", () => {
+  const events = [];
+  const link = { click() { events.push("click"); }, remove() { events.push("remove"); } };
+  downloadBlob(new Blob(["x"]), "x.svg", {
+    documentApi: {
+      createElement: () => link,
+      body: { append() { events.push("append"); } },
+    },
+    get document() { throw new Error("legacy document accessed"); },
+    createObjectURL: () => "blob:document-api",
+    revokeObjectURL() { events.push("revoke"); },
+  });
+  assert.deepEqual(events, ["append", "click", "remove", "revoke"]);
+});
+
 test("downloadDiagramSvg downloads standalone XML with a safe SVG filename", async () => {
   let captured;
   downloadDiagramSvg({ ...exportDiagram, title: "Unsafe / title" }, {
@@ -469,6 +736,16 @@ test("downloadDiagramPng rasterizes full prepared document metrics and downloads
     filename: "Coordinate-PNG.png",
     passedDependencies: dependencies,
   });
+});
+
+test("downloadDiagramPng serializes the prepared diagram without calling the public preparer again", async () => {
+  const source = await readFile(new URL("../src/diagram/export.js", import.meta.url), "utf8");
+  const body = source.match(/export async function downloadDiagramPng[\s\S]*?\n}/)?.[0];
+
+  assert.ok(body);
+  assert.match(body, /const prepared = prepareDiagram\(diagram\)/);
+  assert.match(body, /renderPreparedDiagramSvg\(prepared\)/);
+  assert.doesNotMatch(body, /renderDiagramSvg\(prepared\)/);
 });
 
 test("the export module imports in Node without document or Image globals", async () => {

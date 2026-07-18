@@ -5,6 +5,8 @@ import { DiagramDocument, documentMetrics } from "./DiagramDocument.js";
 import { prepareDiagram } from "./layout/index.js";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>';
+const MAX_CANVAS_DIMENSION = 32_767;
+const MAX_CANVAS_PIXELS = 16_777_216;
 const FILENAME_SEGMENTER = new Intl.Segmenter("en", { granularity: "grapheme" });
 const FILENAME_ENCODER = new TextEncoder();
 const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
@@ -156,14 +158,17 @@ function validateSelfContainedPaint(diagram) {
   });
 }
 
-export function renderDiagramSvg(input) {
-  const diagram = prepareDiagram(input);
+function renderPreparedDiagramSvg(diagram) {
   validateXmlStrings(diagram);
   validateSelfContainedPaint(diagram);
   return XML_DECLARATION + renderToStaticMarkup(React.createElement(DiagramDocument, {
     diagram,
     idPrefix: "export",
   }));
+}
+
+export function renderDiagramSvg(input) {
+  return renderPreparedDiagramSvg(prepareDiagram(input));
 }
 
 export function safeDiagramFilename(title, extension) {
@@ -200,13 +205,30 @@ export function safeDiagramFilename(title, extension) {
 }
 
 function objectUrlDependencies(dependencies) {
-  const needsUrlApi = !dependencies.createObjectURL || !dependencies.revokeObjectURL;
-  const urlApi = needsUrlApi ? (dependencies.urlApi ?? globalThis.URL) : null;
+  const hasDirectCreate = dependencies.createObjectURL !== undefined;
+  const hasDirectRevoke = dependencies.revokeObjectURL !== undefined;
+  if (hasDirectCreate !== hasDirectRevoke) {
+    throw new TypeError("createObjectURL and revokeObjectURL must be provided together");
+  }
+  if (hasDirectCreate) {
+    if (typeof dependencies.createObjectURL !== "function"
+      || typeof dependencies.revokeObjectURL !== "function") {
+      throw new TypeError("createObjectURL and revokeObjectURL must be functions");
+    }
+    return {
+      createObjectURL: dependencies.createObjectURL,
+      revokeObjectURL: dependencies.revokeObjectURL,
+    };
+  }
+
+  const urlApi = dependencies.urlApi ?? globalThis.URL;
+  if (!urlApi || typeof urlApi.createObjectURL !== "function"
+    || typeof urlApi.revokeObjectURL !== "function") {
+    throw new TypeError("URL API requires createObjectURL and revokeObjectURL functions");
+  }
   return {
-    createObjectURL: dependencies.createObjectURL
-      ?? urlApi.createObjectURL.bind(urlApi),
-    revokeObjectURL: dependencies.revokeObjectURL
-      ?? urlApi.revokeObjectURL.bind(urlApi),
+    createObjectURL: urlApi.createObjectURL.bind(urlApi),
+    revokeObjectURL: urlApi.revokeObjectURL.bind(urlApi),
   };
 }
 
@@ -222,6 +244,32 @@ function assertRasterInput(svg, dimensions) {
       throw new TypeError(`Invalid PNG export ${name}: expected a positive finite number`);
     }
   }
+}
+
+function rasterPixelDimensions(dimensions) {
+  const width = Math.round(dimensions.width * 2);
+  const height = Math.round(dimensions.height * 2);
+  if (!Number.isSafeInteger(width) || width <= 0
+    || !Number.isSafeInteger(height) || height <= 0) {
+    throw new TypeError("Unable to allocate PNG canvas: scaled dimensions must be finite positive safe integers");
+  }
+  if (width > MAX_CANVAS_DIMENSION || height > MAX_CANVAS_DIMENSION) {
+    throw new RangeError(`Unable to allocate PNG canvas: maximum dimension is ${MAX_CANVAS_DIMENSION} pixels`);
+  }
+  if (height > MAX_CANVAS_PIXELS / width) {
+    throw new RangeError(`Unable to allocate PNG canvas: maximum area is ${MAX_CANVAS_PIXELS} pixels`);
+  }
+  return { width, height };
+}
+
+function throwOperationFailures(primary, cleanupErrors) {
+  if (!primary && cleanupErrors.length === 0) return;
+  if (primary && cleanupErrors.length === 0) throw primary;
+  if (!primary && cleanupErrors.length === 1) throw cleanupErrors[0];
+  const cause = primary ?? cleanupErrors[0];
+  const errors = primary ? [primary, ...cleanupErrors] : cleanupErrors;
+  const message = cause instanceof Error ? cause.message : String(cause);
+  throw new AggregateError(errors, message, { cause });
 }
 
 function decodeImage(image, source) {
@@ -254,50 +302,71 @@ function encodePng(canvas) {
 
 export async function rasterizeSvg(svg, dimensions, dependencies = {}) {
   assertRasterInput(svg, dimensions);
+  const { width, height } = rasterPixelDimensions(dimensions);
+  const { createObjectURL, revokeObjectURL } = objectUrlDependencies(dependencies);
   const createCanvas = dependencies.createCanvas
     ?? (() => globalThis.document.createElement("canvas"));
   const createImage = dependencies.createImage
     ?? (() => new globalThis.Image());
   const canvas = createCanvas();
-  const width = Math.max(1, Math.round(dimensions.width * 2));
-  const height = Math.max(1, Math.round(dimensions.height * 2));
   canvas.width = width;
   canvas.height = height;
+  if (canvas.width !== width || canvas.height !== height) {
+    throw new Error(`Unable to allocate ${width}x${height} PNG canvas`);
+  }
   const context = canvas.getContext("2d");
   if (!context) throw new Error("PNG export requires a 2D canvas context");
 
-  const { createObjectURL, revokeObjectURL } = objectUrlDependencies(dependencies);
   const source = createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+  let result;
+  let primary;
   try {
     const image = createImage();
     await decodeImage(image, source);
     context.fillStyle = "#FFFFFF";
     context.fillRect(0, 0, width, height);
     context.drawImage(image, 0, 0, width, height);
-    return await encodePng(canvas);
-  } finally {
-    revokeObjectURL(source);
+    result = await encodePng(canvas);
+  } catch (error) {
+    primary = error;
   }
+  const cleanupErrors = [];
+  try {
+    revokeObjectURL(source);
+  } catch (error) {
+    cleanupErrors.push(error);
+  }
+  throwOperationFailures(primary, cleanupErrors);
+  return result;
 }
 
 export function downloadBlob(blob, filename, dependencies = {}) {
-  const documentApi = dependencies.document ?? globalThis.document;
   const { createObjectURL, revokeObjectURL } = objectUrlDependencies(dependencies);
+  const documentApi = dependencies.documentApi ?? dependencies.document ?? globalThis.document;
   const source = createObjectURL(blob);
   let link;
+  let primary;
   try {
     link = documentApi.createElement("a");
     link.href = source;
     link.download = filename;
     documentApi.body.append(link);
     link.click();
-  } finally {
-    try {
-      link?.remove();
-    } finally {
-      revokeObjectURL(source);
-    }
+  } catch (error) {
+    primary = error;
   }
+  const cleanupErrors = [];
+  try {
+    link?.remove();
+  } catch (error) {
+    cleanupErrors.push(error);
+  }
+  try {
+    revokeObjectURL(source);
+  } catch (error) {
+    cleanupErrors.push(error);
+  }
+  throwOperationFailures(primary, cleanupErrors);
 }
 
 export function downloadDiagramSvg(diagram, dependencies = {}) {
@@ -309,7 +378,7 @@ export function downloadDiagramSvg(diagram, dependencies = {}) {
 
 export async function downloadDiagramPng(diagram, dependencies = {}) {
   const prepared = prepareDiagram(diagram);
-  const svg = renderDiagramSvg(prepared);
+  const svg = renderPreparedDiagramSvg(prepared);
   const metrics = documentMetrics(prepared);
   const rasterize = dependencies.rasterizeSvg ?? rasterizeSvg;
   const download = dependencies.downloadBlob ?? downloadBlob;
