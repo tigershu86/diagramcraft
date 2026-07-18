@@ -9,8 +9,9 @@ const FILENAME_SEGMENTER = new Intl.Segmenter("en", { granularity: "grapheme" })
 const FILENAME_ENCODER = new TextEncoder();
 const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
-const NUMBER_TOKEN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?%?$/i;
-const ANGLE_TOKEN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?(?:deg|grad|rad|turn)?$/i;
+const PERCENTAGE_TOKEN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?%$/i;
+const NUMBER_OR_PERCENT_TOKEN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?%?$/i;
+const HUE_TOKEN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?(?:deg|grad|rad|turn)?$/i;
 const NUMERIC_COLOR_FUNCTIONS = new Set([
   "rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch",
 ]);
@@ -68,10 +69,46 @@ function validateXmlStrings(value, path = "$", seen = new WeakSet()) {
   });
 }
 
-function numericComponents(value) {
-  const trimmed = value.trim();
-  if (!trimmed || /^,|,$|,\s*,/.test(trimmed)) return null;
-  return trimmed.replace(/,/g, " ").trim().split(/\s+/);
+function finiteToken(value, pattern) {
+  if (!pattern.test(value)) return false;
+  const numeric = value.replace(/%$|(?:deg|grad|rad|turn)$/i, "");
+  return Number.isFinite(Number(numeric));
+}
+
+function matchesTokens(tokens, patterns) {
+  return tokens.length === patterns.length
+    && tokens.every((token, index) => finiteToken(token, patterns[index]));
+}
+
+function legacyNumericColor(name, body) {
+  if (body.includes("/") || !["rgb", "rgba", "hsl", "hsla"].includes(name)) return false;
+  const components = body.split(",").map((component) => component.trim());
+  if (components.some((component) => !component || /\s/.test(component))) return false;
+  const rgb = [NUMBER_OR_PERCENT_TOKEN, NUMBER_OR_PERCENT_TOKEN, NUMBER_OR_PERCENT_TOKEN];
+  const hsl = [HUE_TOKEN, PERCENTAGE_TOKEN, PERCENTAGE_TOKEN];
+  if (name === "rgb") return matchesTokens(components, rgb);
+  if (name === "rgba") return matchesTokens(components, [...rgb, NUMBER_OR_PERCENT_TOKEN]);
+  if (name === "hsl") return matchesTokens(components, hsl);
+  return matchesTokens(components, [...hsl, NUMBER_OR_PERCENT_TOKEN]);
+}
+
+function modernNumericColor(name, body) {
+  if (body.includes(",")) return false;
+  const sections = body.split("/");
+  if (sections.length > 2) return false;
+  const components = sections[0].trim().split(/\s+/);
+  const alpha = sections.length === 2 ? sections[1].trim() : null;
+  if (!sections[0].trim() || (alpha !== null && (!alpha || /\s/.test(alpha)))) return false;
+  if (alpha !== null && !finiteToken(alpha, NUMBER_OR_PERCENT_TOKEN)) return false;
+
+  const numberOrPercent = [NUMBER_OR_PERCENT_TOKEN, NUMBER_OR_PERCENT_TOKEN, NUMBER_OR_PERCENT_TOKEN];
+  if (["rgb", "rgba", "lab", "oklab"].includes(name)) {
+    return matchesTokens(components, numberOrPercent);
+  }
+  if (["hsl", "hsla", "hwb"].includes(name)) {
+    return matchesTokens(components, [HUE_TOKEN, PERCENTAGE_TOKEN, PERCENTAGE_TOKEN]);
+  }
+  return matchesTokens(components, [NUMBER_OR_PERCENT_TOKEN, NUMBER_OR_PERCENT_TOKEN, HUE_TOKEN]);
 }
 
 function validNumericColor(value) {
@@ -79,23 +116,9 @@ function validNumericColor(value) {
   if (!match) return false;
   const name = match[1].toLowerCase();
   if (!NUMERIC_COLOR_FUNCTIONS.has(name)) return false;
-  const sections = match[2].split("/");
-  if (sections.length > 2) return false;
-  const components = numericComponents(sections[0]);
-  let alpha = sections.length === 2 ? numericComponents(sections[1]) : null;
-  if (!components || (sections.length === 2 && (!alpha || alpha.length !== 1))) return false;
-
-  if (sections.length === 1 && ["rgba", "hsla"].includes(name) && components.length === 4) {
-    alpha = components.splice(3, 1);
-  }
-  if (components.length !== 3 || (alpha && !NUMBER_TOKEN.test(alpha[0]))) return false;
-
-  const hueIndex = ["hsl", "hsla", "hwb"].includes(name)
-    ? 0
-    : ["lch", "oklch"].includes(name) ? 2 : -1;
-  return components.every((component, index) => (
-    index === hueIndex ? ANGLE_TOKEN.test(component) : NUMBER_TOKEN.test(component)
-  ));
+  return match[2].includes(",")
+    ? legacyNumericColor(name, match[2])
+    : modernNumericColor(name, match[2]);
 }
 
 function standalonePaint(value) {

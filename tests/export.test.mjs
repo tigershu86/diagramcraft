@@ -410,6 +410,53 @@ test("renderDiagramSvg accepts self-contained paint colors", () => {
   assert.doesNotMatch(svg, /\\75rl|v\\61r|u\/\*\*\/rl/);
 });
 
+test("renderDiagramSvg rejects mixed or malformed numeric color grammars", () => {
+  for (const value of [
+    "rgba(1 2 3 4)",
+    "rgb(1, 2 3)",
+    "rgb(1,2,3 / .5)",
+    "hsl(120deg 50 40%)",
+    "hwb(120 10 20%)",
+    "lab(50%,0,0)",
+    "oklab(.5,.1,.2)",
+  ]) {
+    assert.throws(
+      () => renderDiagramSvg({
+        ...exportDiagram,
+        nodes: [{ ...exportDiagram.nodes[0], style: { fill: value } }, exportDiagram.nodes[1]],
+      }),
+      /standalone SVG paint[\s\S]*nodes\[0\]\.style\.fill/i,
+      value,
+    );
+  }
+});
+
+test("renderDiagramSvg accepts strict legacy and modern numeric color grammars", () => {
+  const colors = [
+    "rgb(1, 2, 3)",
+    "rgba(1, 2, 3, 50%)",
+    "hsl(120deg, 50%, 40%)",
+    "hsla(.5turn, 50%, 40%, .75)",
+    "rgb(10 20% 30 / 40%)",
+    "rgba(10 20 30 / .5)",
+    "HsL(120deg 50% 40% / .5)",
+    "hsla(120 50% 40% / 50%)",
+    "hwb(120 10% 20% / 30%)",
+    "lab(50% 0 .2 / 1)",
+    "oklab(.5 .1 .2 / 50%)",
+    "lch(50% 20 120deg / .5)",
+    "oklch(.5 .2 .25turn / 50%)",
+  ];
+
+  for (const color of colors) {
+    const svg = renderDiagramSvg({
+      ...exportDiagram,
+      nodes: [{ ...exportDiagram.nodes[0], style: { fill: color } }, exportDiagram.nodes[1]],
+    });
+    assert.ok(svg.includes(`fill="${color}"`), color);
+  }
+});
+
 test("renderDiagramSvg keeps long document text inside a widened narrow export", () => {
   const svg = renderDiagramSvg({
     kind: "flowchart",
