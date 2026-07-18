@@ -10,6 +10,7 @@ import {
   NODE_TYPES,
   TIER_FIELDS,
 } from "../src/diagram/contract.js";
+import { NODE_STYLE_PAINT_FIELDS, PAINT_JSON_SCHEMA } from "../src/diagram/paint.js";
 
 const nonEmptyString = { type: "string", minLength: 1 };
 const finiteNumber = { type: "number" };
@@ -61,9 +62,11 @@ export function buildDiagramSchema() {
       legend: { type: "array", items: { $ref: "#/$defs/legendItem" } },
     }, "diagram"),
     $defs: {
+      paint: PAINT_JSON_SCHEMA,
       style: {
         type: "object",
-        additionalProperties: true,
+        additionalProperties: false,
+        properties: Object.fromEntries(NODE_STYLE_PAINT_FIELDS.map((field) => [field, { $ref: "#/$defs/paint" }])),
       },
       nodeDefaults: {
         type: "object",
@@ -81,7 +84,7 @@ export function buildDiagramSchema() {
           y: finiteNumber,
           width: positiveNumber,
           height: positiveNumber,
-          color: { type: "string" },
+          color: { $ref: "#/$defs/paint" },
         }, "tier"),
       },
       node: {

@@ -1127,7 +1127,7 @@ test("renderDiagramSvg rejects non-standalone paint values with actionable paths
       ...exportDiagram,
       tiers: [{ id: "tier", label: "Tier", x: 0, y: 0, width: 420, height: 100, color: " Url (#outside)" }],
     }),
-    /paint[\s\S]*tiers\[0\]\.color/i,
+    /invalid-tier-color[\s\S]*tiers\[0\]\.color/i,
   );
 });
 
@@ -1174,7 +1174,7 @@ test("renderDiagramSvg rejects mixed or malformed numeric color grammars", () =>
         ...exportDiagram,
         nodes: [{ ...exportDiagram.nodes[0], style: { fill: value } }, exportDiagram.nodes[1]],
       }),
-      /standalone SVG paint[\s\S]*nodes\[0\]\.style\.fill/i,
+      /invalid-node-style-paint[\s\S]*nodes\[0\]\.style\.fill/i,
       value,
     );
   }
