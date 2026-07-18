@@ -69,23 +69,18 @@ All three examples import the same `DiagramRenderer`; their graph data lives in 
 Architecture data can omit coordinates entirely. For example, this Checkout diagram declares tiers and relationships while leaving placement to the shared runtime:
 
 ```js
-const checkout = {
+const diagram = {
   kind: "architecture",
   title: "Checkout",
   tiers: [
-    { id: "client", label: "CLIENT" },
-    { id: "service", label: "SERVICES" },
+    { id: "api", label: "API" },
     { id: "data", label: "DATA" },
   ],
   nodes: [
-    { id: "storefront", label: "Storefront", type: "client", tier: "client" },
-    { id: "checkout", label: "Checkout API", type: "gateway", tier: "service" },
+    { id: "gateway", label: "API Gateway", type: "gateway", tier: "api" },
     { id: "orders", label: "Orders DB", type: "database", tier: "data" },
   ],
-  edges: [
-    { from: "storefront", to: "checkout", label: "HTTPS" },
-    { from: "checkout", to: "orders", label: "SQL" },
-  ],
+  edges: [{ from: "gateway", to: "orders", label: "SQL" }],
 };
 ```
 
