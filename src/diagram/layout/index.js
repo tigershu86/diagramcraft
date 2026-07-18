@@ -1,6 +1,7 @@
 import { hasOwnPosition } from "../contract.js";
 import {
   EDGE_SCENE_PADDING,
+  edgeLabelMetrics,
   edgeLabelPosition,
   nodeBoundsOverlap,
   routeEdge,
@@ -26,7 +27,14 @@ function rawLayoutInput(input) {
   return {
     ...input,
     edges: Array.isArray(input.edges)
-      ? input.edges.map(({ route: _route, gutterX: _gutterX, ...edge }) => edge)
+      ? input.edges.map(({
+        route: _route,
+        gutterX: _gutterX,
+        control1: _control1,
+        control2: _control2,
+        labelPoint: _labelPoint,
+        ...edge
+      }) => edge)
       : input.edges,
   };
 }
@@ -134,6 +142,64 @@ function fitFeedback(edges, nodes, width, height) {
   return { edges: fittedEdges, width: fittedWidth, height: fittedHeight };
 }
 
+function clamp(value, lower, upper) {
+  return Math.min(upper, Math.max(lower, value));
+}
+
+function samePoint(first, second) {
+  return first[0] === second[0] && first[1] === second[1];
+}
+
+function fitOrdinary(edges, nodes, width, height) {
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const labelMetrics = edges
+    .filter((edge) => edge.route !== "feedback" && edge.label)
+    .map((edge) => edgeLabelMetrics(edge.label));
+  const fittedWidth = Math.max(width, ...labelMetrics.map(({ width: labelWidth }) => labelWidth));
+  const fittedHeight = Math.max(height, ...labelMetrics.map(({ height: labelHeight }) => labelHeight));
+  const fittedEdges = edges.map((edge) => {
+    if (edge.route === "feedback") return { ...edge };
+    const fromNode = nodeMap.get(edge.from);
+    const toNode = nodeMap.get(edge.to);
+    const route = routeEdge(fromNode, toNode, edge);
+    if (!Number.isFinite(fittedWidth)
+      || !Number.isFinite(fittedHeight)
+      || !Object.values(route.points).flat().every(Number.isFinite)) {
+      return { ...edge };
+    }
+    // A cubic Bézier stays inside the convex hull of its endpoints and controls.
+    const control1 = [
+      clamp(route.points.control1[0], 0, fittedWidth),
+      clamp(route.points.control1[1], 0, fittedHeight),
+    ];
+    const control2 = [
+      clamp(route.points.control2[0], 0, fittedWidth),
+      clamp(route.points.control2[1], 0, fittedHeight),
+    ];
+    const controlsChanged = !samePoint(control1, route.points.control1)
+      || !samePoint(control2, route.points.control2);
+    const fittedEdge = controlsChanged ? { ...edge, control1, control2 } : { ...edge };
+    const fittedRoute = routeEdge(fromNode, toNode, fittedEdge);
+    const label = edgeLabelPosition(fittedRoute, fittedEdge, fromNode, toNode);
+    if (!edge.label || ![label.left, label.right, label.top, label.bottom].every(Number.isFinite)) {
+      return fittedEdge;
+    }
+    const labelPoint = [
+      clamp(label.x, label.width / 2, fittedWidth - label.width / 2),
+      clamp(label.y, label.height / 2, fittedHeight - label.height / 2),
+    ];
+    return samePoint(labelPoint, [label.x, label.y])
+      ? fittedEdge
+      : { ...fittedEdge, labelPoint };
+  });
+  return { edges: fittedEdges, width: fittedWidth, height: fittedHeight };
+}
+
+function fitEdges(edges, nodes, width, height) {
+  const feedback = fitFeedback(edges, nodes, width, height);
+  return fitOrdinary(feedback.edges, nodes, feedback.width, feedback.height);
+}
+
 function tierRectangles(tiers, nodes, canvasWidth, { preserveSequenceGeometry = false } = {}) {
   const {
     OUTER,
@@ -214,7 +280,7 @@ function fullyPositionedLayout(normalized, input) {
   const classifiedEdges = normalized.kind === "flowchart"
     ? layoutFlowchart(normalized).edges
     : normalized.edges.map((edge) => ({ ...edge }));
-  const feedback = fitFeedback(classifiedEdges, normalized.nodes, fitted.size.width, fitted.size.height);
+  const feedback = fitEdges(classifiedEdges, normalized.nodes, fitted.size.width, fitted.size.height);
   return {
     ...normalized,
     width: feedback.width,
@@ -245,7 +311,7 @@ function mixedLayout(normalized, input, ideal) {
   const size = contentSize(merged);
   let width = Math.max(input.width ?? 0, ideal.width, size.width);
   let height = Math.max(input.height ?? 0, ideal.height, size.height);
-  const feedback = fitFeedback(ideal.edges, merged, width, height);
+  const feedback = fitEdges(ideal.edges, merged, width, height);
   width = feedback.width;
   height = feedback.height;
   const tiers = normalized.kind === "architecture" && normalized.tiers.length > 0
@@ -270,7 +336,7 @@ export function layoutDiagram(input, { mode = "missing" } = {}) {
 
   const ideal = automaticLayout(normalized);
   if (mode === "force") {
-    const feedback = fitFeedback(ideal.edges, ideal.nodes, ideal.width, ideal.height);
+    const feedback = fitEdges(ideal.edges, ideal.nodes, ideal.width, ideal.height);
     return markInternalLayout({
       ...ideal,
       width: feedback.width,

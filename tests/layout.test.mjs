@@ -2,7 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { ARCH_ECOMMERCE, ARCH_FLOWCHART_STYLE } from "../examples/diagrams.js";
-import { edgeLabelWidth, nodeBoundsOverlap, routeEdge } from "../src/diagram/geometry.js";
+import {
+  edgeLabelPosition,
+  edgeLabelWidth,
+  nodeBoundsOverlap,
+  routeEdge,
+} from "../src/diagram/geometry.js";
 import { layoutArchitecture } from "../src/diagram/layout/architecture.js";
 import { layoutDiagram, prepareDiagram } from "../src/diagram/layout/index.js";
 import { normalizeDiagram, validateDiagram } from "../src/diagram/schema.js";
@@ -99,6 +104,26 @@ function assertFeedbackScenePadding(diagram, padding = 12) {
     assert.ok(point[0] >= 0 && point[0] <= diagram.width - padding);
     assert.ok(point[1] >= 0 && point[1] <= diagram.height - padding);
   }
+}
+
+function assertOrdinaryEdgeFits(diagram, edge = diagram.edges.find(({ route }) => route !== "feedback")) {
+  const nodeMap = new Map(diagram.nodes.map((node) => [node.id, node]));
+  const fromNode = nodeMap.get(edge.from);
+  const toNode = nodeMap.get(edge.to);
+  const route = routeEdge(fromNode, toNode, edge);
+  const label = edgeLabelPosition(route, edge, fromNode, toNode);
+
+  for (const [name, [x, y]] of Object.entries(route.points)) {
+    assert.ok(x >= 0 && x <= diagram.width, `${name}.x ${x} exceeds 0..${diagram.width}`);
+    assert.ok(y >= 0 && y <= diagram.height, `${name}.y ${y} exceeds 0..${diagram.height}`);
+  }
+  if (edge.label) {
+    assert.ok(label.left >= 0, `label.left ${label.left} is negative`);
+    assert.ok(label.right <= diagram.width, `label.right ${label.right} exceeds ${diagram.width}`);
+    assert.ok(label.top >= 0, `label.top ${label.top} is negative`);
+    assert.ok(label.bottom <= diagram.height, `label.bottom ${label.bottom} exceeds ${diagram.height}`);
+  }
+  return { route, label };
 }
 
 const architecture = {
@@ -515,6 +540,86 @@ test("prepareDiagram accepts finite explicit-anchor edge geometry", () => {
   const route = routeEdge(nodeMap.get(edge.from), nodeMap.get(edge.to), edge);
 
   assert.ok(Object.values(route.points).flat().every(Number.isFinite));
+});
+
+test("prepareDiagram keeps a top short-edge label inside a fixed manual canvas", () => {
+  const input = {
+    kind: "flowchart",
+    title: "Top short edge",
+    width: 400,
+    height: 100,
+    nodes: [
+      { id: "left", label: "Left", type: "process", x: 0, y: 10, width: 180, height: 48 },
+      { id: "right", label: "Right", type: "process", x: 200, y: 10, width: 180, height: 48 },
+    ],
+    edges: [{ from: "left", to: "right", label: "event" }],
+  };
+
+  const prepared = prepareDiagram(input);
+  const { label } = assertOrdinaryEdgeFits(prepared);
+
+  assert.deepEqual(
+    prepared.nodes.map(({ x, y }) => ({ x, y })),
+    input.nodes.map(({ x, y }) => ({ x, y })),
+  );
+  assert.ok(label.top >= 0);
+  assert.deepEqual(prepareDiagram(prepared), prepared);
+});
+
+test("prepareDiagram constrains outward explicit-anchor controls without changing endpoint sides", () => {
+  const input = {
+    kind: "flowchart",
+    title: "Outward anchors",
+    width: 400,
+    height: 100,
+    nodes: [
+      { id: "left", label: "Left", type: "process", x: 0, y: 10, width: 180, height: 48 },
+      { id: "right", label: "Right", type: "process", x: 200, y: 10, width: 180, height: 48 },
+    ],
+    edges: [{
+      from: "left",
+      to: "right",
+      label: "outward",
+      fromAnchor: "left",
+      toAnchor: "right",
+    }],
+  };
+
+  const prepared = prepareDiagram(input);
+  const { route } = assertOrdinaryEdgeFits(prepared);
+
+  assert.equal(route.fromAnchor, "left");
+  assert.equal(route.toAnchor, "right");
+  assert.deepEqual(route.points.start, [0, 34]);
+  assert.deepEqual(route.points.end, [380, 34]);
+  assert.deepEqual(
+    prepared.nodes.map(({ x, y }) => ({ x, y })),
+    input.nodes.map(({ x, y }) => ({ x, y })),
+  );
+  assert.deepEqual(prepareDiagram(prepared), prepared);
+});
+
+test("ordinary edge fitting remains idempotent when a later label expands the canvas", () => {
+  const input = {
+    kind: "flowchart",
+    title: "Ordered edge fitting",
+    width: 400,
+    height: 100,
+    nodes: [
+      { id: "left", label: "Left", type: "process", x: 0, y: 10, width: 80, height: 48 },
+      { id: "right", label: "Right", type: "process", x: 300, y: 10, width: 80, height: 48 },
+    ],
+    edges: [
+      { from: "left", to: "right", fromAnchor: "left", toAnchor: "right" },
+      { from: "left", to: "right", label: "A later label that deliberately widens the prepared canvas ".repeat(2) },
+    ],
+  };
+
+  const prepared = prepareDiagram(input);
+
+  assert.ok(prepared.width > input.width);
+  prepared.edges.forEach((edge) => assertOrdinaryEdgeFits(prepared, edge));
+  assert.deepEqual(prepareDiagram(prepared), prepared);
 });
 
 test("prepareDiagram lays out a coordinate-free feedback flow with metadata", () => {

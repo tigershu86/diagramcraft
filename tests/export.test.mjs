@@ -914,6 +914,43 @@ test("renderDiagramSvg lays out and exports a coordinate-free diagram", () => {
   assert.doesNotMatch(svg, /NaN|Infinity|undefined/);
 });
 
+test("renderDiagramSvg keeps prepared ordinary edge geometry inside its standalone viewBox", () => {
+  const topLabelSvg = renderDiagramSvg({
+    kind: "flowchart",
+    title: "Top short edge export",
+    width: 400,
+    height: 100,
+    nodes: [
+      { id: "left", label: "Left", type: "process", x: 0, y: 10, width: 180, height: 48 },
+      { id: "right", label: "Right", type: "process", x: 200, y: 10, width: 180, height: 48 },
+    ],
+    edges: [{ from: "left", to: "right", label: "event" }],
+  });
+  const outwardSvg = renderDiagramSvg({
+    kind: "flowchart",
+    title: "Outward anchor export",
+    width: 400,
+    height: 100,
+    nodes: [
+      { id: "left", label: "Left", type: "process", x: 0, y: 10, width: 180, height: 48 },
+      { id: "right", label: "Right", type: "process", x: 200, y: 10, width: 180, height: 48 },
+    ],
+    edges: [{
+      from: "left",
+      to: "right",
+      label: "outward",
+      fromAnchor: "left",
+      toAnchor: "right",
+    }],
+  });
+
+  assert.match(topLabelSvg, /<svg[^>]+width="400"[^>]+viewBox="0 0 400 [^"]+"/);
+  assert.match(topLabelSvg, /<rect x="[^-][^"]*" y="0" width="[^-][^"]*" height="18" rx="5"/);
+  assert.match(outwardSvg, /<svg[^>]+width="400"[^>]+viewBox="0 0 400 [^"]+"/);
+  assert.match(outwardSvg, /M 0 34 C 0 34 400 34 380 34/);
+  assert.doesNotMatch(outwardSvg, /M 0 34 C -/);
+});
+
 test("renderDiagramSvg accepts a prepared cycle and keeps its finite feedback path", () => {
   const prepared = prepareDiagram({
     kind: "flowchart",
