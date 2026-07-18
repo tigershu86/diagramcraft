@@ -6,6 +6,7 @@ import { layoutFlowchart } from "./flowchart.js";
 
 const CANVAS_PADDING = 24;
 const FEEDBACK_MARGIN = 60;
+const TIER_GEOMETRY_FIELDS = ["x", "y", "width", "height"];
 const VALID_MODES = new Set(["missing", "force"]);
 
 function automaticLayout(diagram) {
@@ -20,10 +21,6 @@ function contentSize(nodes) {
     width: Math.max(CANVAS_PADDING, ...nodes.map((node) => node.x + node.width + CANVAS_PADDING)),
     height: Math.max(CANVAS_PADDING, ...nodes.map((node) => node.y + node.height + CANVAS_PADDING)),
   };
-}
-
-function hasTierGeometry(tiers) {
-  return tiers.every((tier) => Number.isFinite(tier.y) && Number.isFinite(tier.height) && tier.height > 0);
 }
 
 function collides(candidate, placed) {
@@ -52,7 +49,7 @@ function fitFeedback(edges, nodes, width) {
   return { edges: fittedEdges, width: fittedWidth };
 }
 
-function tierRectangles(tiers, nodes, canvasWidth) {
+function tierRectangles(tiers, nodes, canvasWidth, { preserveSequenceGeometry = false } = {}) {
   const {
     OUTER,
     TIER_LABEL_HEIGHT,
@@ -70,27 +67,84 @@ function tierRectangles(tiers, nodes, canvasWidth) {
       memberBottom - y + TIER_BOTTOM_PADDING,
     );
     const result = { ...tier, x: 12, y, width: canvasWidth - 24, height };
-    nextY = Math.max(nextY, y + height + TIER_GAP);
+    const sequenceY = preserveSequenceGeometry && tier.y !== undefined ? tier.y : y;
+    const sequenceHeight = preserveSequenceGeometry && tier.height !== undefined ? tier.height : height;
+    nextY = Math.max(nextY, sequenceY + sequenceHeight + TIER_GAP);
     return result;
   });
 }
 
-function fullyPositionedLayout(normalized, input) {
-  const size = contentSize(normalized.nodes);
-  const width = input.width ?? size.width;
-  const height = input.height ?? size.height;
+function fillTierGeometry(tiers, candidates) {
+  return tiers.map((tier, index) => ({
+    ...tier,
+    ...Object.fromEntries(
+      TIER_GEOMETRY_FIELDS
+        .filter((field) => tier[field] === undefined)
+        .map((field) => [field, candidates[index][field]]),
+    ),
+  }));
+}
+
+function canvasSize(input, nodeSize, tiers) {
+  const tierRight = Math.max(0, ...tiers.map((tier) => (
+    Number.isFinite(tier.x) && Number.isFinite(tier.width) ? tier.x + tier.width : 0
+  )));
+  const tierBottom = Math.max(0, ...tiers.map((tier) => (
+    Number.isFinite(tier.y) && Number.isFinite(tier.height)
+      ? tier.y + tier.height + CANVAS_PADDING
+      : 0
+  )));
+  return {
+    width: input.width ?? Math.max(nodeSize.width, tierRight),
+    height: input.height ?? Math.max(nodeSize.height, tierBottom),
+  };
+}
+
+function fittedManualTiers(normalized, input, nodeSize) {
   const hasMembership = normalized.nodes.some((node) => node.tier !== undefined);
-  const rebuildTiers = normalized.kind === "architecture"
-    && normalized.tiers.length > 0
-    && hasMembership
-    && !hasTierGeometry(normalized.tiers);
+  if (normalized.kind !== "architecture" || normalized.tiers.length === 0 || !hasMembership) {
+    return {
+      tiers: normalized.tiers.map((tier) => ({ ...tier })),
+      size: canvasSize(input, nodeSize, normalized.tiers),
+    };
+  }
+
+  const initialWidth = input.width ?? nodeSize.width;
+  const initialCandidates = tierRectangles(
+    normalized.tiers,
+    normalized.nodes,
+    initialWidth,
+    { preserveSequenceGeometry: true },
+  );
+  let tiers = fillTierGeometry(normalized.tiers, initialCandidates);
+  let size = canvasSize(input, nodeSize, tiers);
+  if (input.width === undefined && size.width !== initialWidth) {
+    const finalCandidates = tierRectangles(
+      normalized.tiers,
+      normalized.nodes,
+      size.width,
+      { preserveSequenceGeometry: true },
+    );
+    tiers = fillTierGeometry(normalized.tiers, finalCandidates);
+    size = canvasSize(input, nodeSize, tiers);
+  }
+  return { tiers, size };
+}
+
+function fullyPositionedLayout(normalized, input) {
+  const nodeSize = contentSize(normalized.nodes);
+  const fitted = fittedManualTiers(normalized, input, nodeSize);
+  const classifiedEdges = normalized.kind === "flowchart"
+    ? layoutFlowchart(normalized).edges
+    : normalized.edges.map((edge) => ({ ...edge }));
+  const feedback = fitFeedback(classifiedEdges, normalized.nodes, fitted.size.width);
   return {
     ...normalized,
-    width,
-    height,
-    tiers: rebuildTiers ? tierRectangles(normalized.tiers, normalized.nodes, width) : normalized.tiers.map((tier) => ({ ...tier })),
+    width: feedback.width,
+    height: fitted.size.height,
+    tiers: fitted.tiers,
     nodes: normalized.nodes.map((node) => ({ ...node })),
-    edges: normalized.edges.map((edge) => ({ ...edge })),
+    edges: feedback.edges,
   };
 }
 

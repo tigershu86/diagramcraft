@@ -177,6 +177,78 @@ test("manual architecture without tier membership leaves absent tier geometry al
   assert.deepEqual(layoutDiagram(input).tiers, input.tiers);
 });
 
+test("manual architecture fills only missing tier geometry fields", () => {
+  const input = {
+    kind: "architecture",
+    title: "Partial tier geometry",
+    width: 800,
+    height: 600,
+    tiers: [
+      { id: "top", label: "Top", y: 40, height: 120, color: "blue" },
+      { id: "bottom", label: "Bottom", x: 30, y: 300, width: 700, height: 150, color: "green" },
+    ],
+    nodes: [
+      { id: "one", label: "One", type: "service", tier: "top", x: 100, y: 70 },
+      { id: "two", label: "Two", type: "database", tier: "bottom", x: 200, y: 330 },
+    ],
+    edges: [{ from: "one", to: "two" }],
+  };
+
+  const result = layoutDiagram(input);
+  assert.deepEqual(result.tiers[0], {
+    ...input.tiers[0],
+    x: 12,
+    width: 776,
+  });
+  assert.deepEqual(result.tiers[1], input.tiers[1]);
+});
+
+test("omitted canvas dimensions include final and trailing-empty tier bounds", () => {
+  const input = {
+    kind: "architecture",
+    title: "Tier-fitted canvas",
+    tiers: [
+      { id: "content", label: "Content", x: 12, y: 24, width: 1000, height: 300 },
+      { id: "empty", label: "Empty" },
+    ],
+    nodes: [{ id: "one", label: "One", type: "service", tier: "content", x: 100, y: 80 }],
+    edges: [],
+  };
+
+  const result = layoutDiagram(input);
+  const tail = result.tiers[1];
+  assert.ok(result.width >= result.tiers[0].x + result.tiers[0].width);
+  assert.ok(result.height >= tail.y + tail.height + 24);
+  assert.equal(result.tiers[0].width, input.tiers[0].width);
+  assert.equal(result.tiers[0].height, input.tiers[0].height);
+});
+
+test("manual cyclic flow classifies feedback without moving fixed nodes", () => {
+  const input = {
+    kind: "flowchart",
+    title: "Manual feedback",
+    width: 500,
+    height: 700,
+    nodes: [
+      { id: "a", label: "A", type: "process", x: 40, y: 40 },
+      { id: "b", label: "B", type: "process", x: 360, y: 220 },
+      { id: "c", label: "C", type: "process", x: 900, y: 420 },
+    ],
+    edges: [{ from: "a", to: "b" }, { from: "b", to: "c" }, { from: "c", to: "a" }],
+  };
+
+  const result = prepareDiagram(input);
+  const maxRight = Math.max(...result.nodes.map((node) => node.x + node.width));
+  assert.deepEqual(
+    result.nodes.map(({ x, y }) => ({ x, y })),
+    input.nodes.map(({ x, y }) => ({ x, y })),
+  );
+  assert.equal(result.edges[2].route, "feedback");
+  assert.ok(result.edges[2].gutterX > maxRight);
+  assert.ok(result.width > result.edges[2].gutterX);
+  assert.equal(result.height, input.height);
+});
+
 test("force placement ignores old coordinates and tightly fits its result", () => {
   const input = {
     kind: "flowchart",
