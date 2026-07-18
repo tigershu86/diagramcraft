@@ -1,7 +1,7 @@
 import React, { useId, useMemo, useState } from "react";
 
 import { routeEdge } from "./geometry.js";
-import { normalizeDiagram } from "./schema.js";
+import { assertPreparedDiagram, normalizeDiagram } from "./schema.js";
 import { NODE_STYLES, TOKENS, nodeStyle } from "./theme.js";
 
 const h = React.createElement;
@@ -263,7 +263,11 @@ export function DiagramRenderer({
   showLegend = true,
   showHint = true,
 }) {
-  const diagram = useMemo(() => normalizeDiagram(input), [input]);
+  const diagram = useMemo(() => {
+    const normalized = normalizeDiagram(input);
+    assertPreparedDiagram(normalized);
+    return normalized;
+  }, [input]);
   const [hovered, setHovered] = useState(null);
   const [selected, setSelected] = useState(initialSelectedId);
   const reactId = useId().replace(/:/g, "");

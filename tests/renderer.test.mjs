@@ -51,6 +51,20 @@ test("DiagramRenderer rejects invalid graph data before rendering", () => {
   );
 });
 
+test("DiagramRenderer rejects structurally valid coordinate-free data before rendering", () => {
+  assert.throws(
+    () => renderToStaticMarkup(React.createElement(DiagramRenderer, {
+      diagram: {
+        kind: "flowchart",
+        title: "Unprepared flow",
+        nodes: [{ id: "start", label: "Start", type: "terminal" }],
+        edges: [],
+      },
+    })),
+    /unprepared-width[\s\S]*unprepared-height[\s\S]*unprepared-node-position/,
+  );
+});
+
 test("DiagramRenderer rejects non-string node sublabels before React renders them", () => {
   assert.throws(
     () => renderToStaticMarkup(React.createElement(DiagramRenderer, {
@@ -69,15 +83,15 @@ test("DiagramRenderer rejects non-string node sublabels before React renders the
 test("DiagramRenderer rejects manual tiers missing required geometry before rendering", () => {
   assert.throws(
     () => renderToStaticMarkup(React.createElement(DiagramRenderer, {
-      diagram: { ...diagram, tiers: [{ label: "Missing y", height: 40 }] },
+      diagram: { ...diagram, tiers: [{ id: "missing-y", label: "Missing y", height: 40 }] },
     })),
-    /missing-tier-y/,
+    /unprepared-tier-y/,
   );
   assert.throws(
     () => renderToStaticMarkup(React.createElement(DiagramRenderer, {
-      diagram: { ...diagram, tiers: [{ label: "Missing height", y: 0 }] },
+      diagram: { ...diagram, tiers: [{ id: "missing-height", label: "Missing height", y: 0 }] },
     })),
-    /missing-tier-height/,
+    /unprepared-tier-height/,
   );
 });
 

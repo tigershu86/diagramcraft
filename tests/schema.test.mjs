@@ -6,6 +6,12 @@ import {
   normalizeDiagram,
   validateDiagram,
 } from "../src/diagram/schema.js";
+import {
+  ANCHORS,
+  DIAGRAM_KINDS,
+  NODE_SHAPES,
+  NODE_TYPES,
+} from "../src/diagram/contract.js";
 
 const validDiagram = {
   kind: "flowchart",
@@ -22,7 +28,7 @@ const validDiagram = {
 test("normalizeDiagram applies canonical node sizes and edge defaults", () => {
   const normalized = normalizeDiagram({
     ...validDiagram,
-    tiers: [{ label: "Top", x: 0, y: 0, width: 640, height: 80 }],
+    tiers: [{ id: "top", label: "Top", x: 0, y: 0, width: 640, height: 80 }],
   });
 
   assert.deepEqual(
@@ -34,6 +40,99 @@ test("normalizeDiagram applies canonical node sizes and edge defaults", () => {
   );
   assert.equal(normalized.edges[0].dashed, false);
   assert.equal(normalized.nodes[0].shape, "terminal");
+});
+
+test("validateDiagram accepts a coordinate-free flowchart without canvas dimensions", () => {
+  assert.deepEqual(validateDiagram({
+    kind: "flowchart",
+    title: "Unprepared flow",
+    nodes: [
+      { id: "start", label: "Start", type: "terminal" },
+      { id: "process", label: "Process", type: "process" },
+    ],
+    edges: [{ from: "start", to: "process" }],
+  }), []);
+});
+
+test("validateDiagram rejects a node with only one coordinate", () => {
+  assert.deepEqual(
+    validateDiagram({
+      ...validDiagram,
+      nodes: [
+        { id: "start", label: "Start", type: "terminal", x: 250 },
+        validDiagram.nodes[1],
+      ],
+    }).map(({ code }) => code),
+    ["partial-node-position"],
+  );
+});
+
+test("architecture accepts fully positioned manual nodes without tiers", () => {
+  assert.deepEqual(validateDiagram({ ...validDiagram, kind: "architecture" }), []);
+});
+
+test("force layout requires architecture nodes to declare a tier", () => {
+  assert.deepEqual(
+    validateDiagram({
+      ...validDiagram,
+      kind: "architecture",
+      tiers: [{ id: "edge", label: "Edge" }],
+    }, { layout: "force" }).map(({ code }) => code),
+    ["missing-node-tier", "missing-node-tier"],
+  );
+});
+
+test("validateDiagram rejects unknown node tiers", () => {
+  assert.deepEqual(
+    validateDiagram({
+      ...validDiagram,
+      kind: "architecture",
+      tiers: [{ id: "edge", label: "Edge" }],
+      nodes: validDiagram.nodes.map((node) => ({ ...node, tier: "missing" })),
+    }).map(({ code }) => code),
+    ["unknown-node-tier", "unknown-node-tier"],
+  );
+});
+
+test("contract exports are frozen and cover supported node rendering values", () => {
+  assert.equal(Object.isFrozen(DIAGRAM_KINDS), true);
+  assert.equal(Object.isFrozen(ANCHORS), true);
+  assert.equal(Object.isFrozen(NODE_SHAPES), true);
+  assert.equal(Object.isFrozen(NODE_TYPES), true);
+  assert.deepEqual(NODE_TYPES, [
+    "client", "cdn", "lb", "security", "gateway", "service", "cache", "database", "queue", "search", "external",
+    "terminal", "process", "decision", "data", "sub", "state", "highlight", "error",
+  ]);
+});
+
+test("validateDiagram rejects unsupported centralized node type, shape, and anchor", () => {
+  assert.deepEqual(
+    validateDiagram({
+      ...validDiagram,
+      nodes: [{ ...validDiagram.nodes[0], type: "unknown", shape: "circle" }, validDiagram.nodes[1]],
+      edges: [{ from: "start", to: "auth", fromAnchor: "middle" }],
+    }).map(({ code }) => code),
+    ["invalid-node-type", "invalid-node-shape", "invalid-edge-from-anchor"],
+  );
+});
+
+test("normalizeDiagram applies presets without inventing omitted coordinates", () => {
+  const normalized = normalizeDiagram({
+    kind: "flowchart",
+    title: "Coordinate-free",
+    nodes: [{ id: "start", label: "Start", type: "terminal" }],
+    edges: [],
+  });
+
+  assert.deepEqual(normalized.nodes[0], {
+    id: "start",
+    label: "Start",
+    type: "terminal",
+    width: 140,
+    height: 44,
+    shape: "terminal",
+    sublabel: "",
+  });
 });
 
 test("normalizeDiagram supports per-diagram node defaults without hiding node overrides", () => {
