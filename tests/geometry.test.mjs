@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   anchorPoint,
   cubicPoint,
+  edgeLabelMetrics,
   nodeBoundsOverlap,
   routeEdge,
   validateLayout,
@@ -57,6 +58,18 @@ test("routeEdge sends feedback edges through the right-side gutter", () => {
   assert.deepEqual(route.labelPoint, cubicPoint(route.points, 0.5));
 });
 
+test("routeEdge gives a feedback self-loop a visible downward arc", () => {
+  const node = { id: "self", x: 20, y: 0, width: 20, height: 20 };
+  const route = routeEdge(node, node, { route: "feedback", gutterX: 200 });
+
+  assert.deepEqual(route.points.start, [40, 10]);
+  assert.deepEqual(route.points.end, route.points.start);
+  assert.ok(route.points.control1[1] >= route.points.start[1] + 48);
+  assert.equal(route.points.control2[1], route.points.control1[1]);
+  assert.deepEqual(route.labelPoint, cubicPoint(route.points, 0.5));
+  assert.notEqual(route.points.control1[1], route.points.start[1]);
+});
+
 test("routeEdge derives a finite feedback gutter when gutterX is missing or invalid", () => {
   for (const gutterX of [undefined, Number.NaN, Number.POSITIVE_INFINITY, "far-right"]) {
     const route = routeEdge(bottom, top, { route: "feedback", gutterX });
@@ -64,6 +77,34 @@ test("routeEdge derives a finite feedback gutter when gutterX is missing or inva
     assert.ok(route.points.control1[0] >= 448);
     assert.deepEqual(route.labelPoint, cubicPoint(route.points, 0.5));
   }
+});
+
+test("edgeLabelMetrics keeps ASCII labels near the existing visual width", () => {
+  const metrics = edgeLabelMetrics("Event");
+
+  assert.ok(metrics.textLength >= 30.5 && metrics.textLength <= 31.5);
+  assert.ok(metrics.width >= 44.5 && metrics.width <= 45.5);
+});
+
+test("edgeLabelMetrics budgets about one em for every CJK grapheme", () => {
+  const metrics = edgeLabelMetrics("流程回退标签");
+
+  assert.ok(metrics.textLength >= 59 && metrics.textLength <= 61);
+  assert.ok(metrics.width >= 73 && metrics.width <= 75);
+});
+
+test("edgeLabelMetrics counts a family ZWJ emoji as one grapheme", () => {
+  const metrics = edgeLabelMetrics("👨‍👩‍👧‍👦");
+
+  assert.ok(metrics.textLength >= 9 && metrics.textLength <= 11);
+  assert.equal(metrics.width, 36);
+});
+
+test("edgeLabelMetrics does not double-count a combining mark", () => {
+  const metrics = edgeLabelMetrics("e\u0301");
+
+  assert.ok(metrics.textLength >= 6 && metrics.textLength <= 7);
+  assert.equal(metrics.width, 36);
 });
 
 test("nodeBoundsOverlap honors the requested safety gap", () => {

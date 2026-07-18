@@ -1,4 +1,9 @@
 const ANCHORS = new Set(["top", "right", "bottom", "left"]);
+const GRAPHEME_SEGMENTER = new Intl.Segmenter("en", { granularity: "grapheme" });
+const WIDE_GRAPHEME = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\u3000-\u303F\uFF01-\uFF60\uFFE0-\uFFE6]/u;
+const EMOJI_GRAPHEME = /\p{Extended_Pictographic}/u;
+const ASCII_GRAPHEME = /^[\x00-\x7F]\p{Mark}*$/u;
+export const EDGE_SCENE_PADDING = 12;
 
 export function anchorPoint(node, side) {
   if (!ANCHORS.has(side)) throw new TypeError(`Unknown anchor: ${side}`);
@@ -42,8 +47,44 @@ export function cubicPoint(points, t) {
   return [x, y];
 }
 
+export function edgeLabelMetrics(label) {
+  const textLength = label
+    ? [...GRAPHEME_SEGMENTER.segment(label)].reduce((total, { segment }) => {
+      if (EMOJI_GRAPHEME.test(segment) || WIDE_GRAPHEME.test(segment)) return total + 10;
+      if (ASCII_GRAPHEME.test(segment)) return total + 6.2;
+      return total + 7.2;
+    }, 0)
+    : 0;
+  return {
+    width: label ? Math.max(36, textLength + 14) : 0,
+    height: 18,
+    textLength,
+  };
+}
+
 export function edgeLabelWidth(label) {
-  return label ? Math.max(36, label.length * 6.2 + 14) : 0;
+  return edgeLabelMetrics(label).width;
+}
+
+export function edgeLabelPosition(route, edge, fromNode, toNode, { padding = EDGE_SCENE_PADDING } = {}) {
+  const metrics = edgeLabelMetrics(edge.label);
+  let [x, y] = route.labelPoint;
+  const shortHorizontal = edge.route !== "feedback"
+    && ["left", "right"].includes(route.fromAnchor)
+    && ["left", "right"].includes(route.toAnchor)
+    && Math.abs(route.points.end[0] - route.points.start[0]) < 80
+    && Math.abs(route.points.end[1] - route.points.start[1]) < 2;
+  if (shortHorizontal) y = Math.min(fromNode.y, toNode.y) - 10;
+  if (edge.route === "feedback") y = Math.max(y, padding + metrics.height / 2);
+  return {
+    ...metrics,
+    x,
+    y,
+    left: x - metrics.width / 2,
+    right: x + metrics.width / 2,
+    top: y - metrics.height / 2,
+    bottom: y + metrics.height / 2,
+  };
 }
 
 export function routeEdge(fromNode, toNode, edge = {}) {
@@ -57,14 +98,17 @@ export function routeEdge(fromNode, toNode, edge = {}) {
       start[0] + 28,
       end[0] + 28,
     );
+    const controlY = fromNode === toNode || fromNode.id === toNode.id
+      ? start[1] + 48
+      : null;
     const points = {
       start,
-      control1: [gutterX, start[1]],
-      control2: [gutterX, end[1]],
+      control1: [gutterX, controlY ?? start[1]],
+      control2: [gutterX, controlY ?? end[1]],
       end,
     };
     return {
-      d: `M ${start[0]} ${start[1]} C ${gutterX} ${start[1]} ${gutterX} ${end[1]} ${end[0]} ${end[1]}`,
+      d: `M ${start[0]} ${start[1]} C ${points.control1[0]} ${points.control1[1]} ${points.control2[0]} ${points.control2[1]} ${end[0]} ${end[1]}`,
       points,
       fromAnchor,
       toAnchor,

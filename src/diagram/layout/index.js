@@ -1,5 +1,11 @@
 import { hasOwnPosition } from "../contract.js";
-import { edgeLabelWidth, nodeBoundsOverlap, routeEdge, validateLayout } from "../geometry.js";
+import {
+  EDGE_SCENE_PADDING,
+  edgeLabelPosition,
+  nodeBoundsOverlap,
+  routeEdge,
+  validateLayout,
+} from "../geometry.js";
 import { normalizeDiagram } from "../schema.js";
 import { ARCHITECTURE_LAYOUT, layoutArchitecture } from "./architecture.js";
 import { layoutFlowchart } from "./flowchart.js";
@@ -94,10 +100,11 @@ function reserveHorizontalPosition(node, placed) {
   return { ...node, x: node.x + offset * step };
 }
 
-function fitFeedback(edges, nodes, width) {
+function fitFeedback(edges, nodes, width, height) {
   const maxRight = Math.max(0, ...nodes.map((node) => node.x + node.width));
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
   let fittedWidth = width;
+  let fittedHeight = height;
   const fittedEdges = edges.map((edge) => {
     if (edge.route !== "feedback") return { ...edge };
     let gutterX = Math.max(
@@ -106,21 +113,28 @@ function fitFeedback(edges, nodes, width) {
     );
     const fromNode = nodeMap.get(edge.from);
     const toNode = nodeMap.get(edge.to);
-    const labelWidth = edgeLabelWidth(edge.label);
     let route = routeEdge(fromNode, toNode, { ...edge, gutterX });
-    const labelLeft = route.labelPoint[0] - labelWidth / 2;
-    if (labelLeft < 0) {
-      gutterX += -labelLeft / 0.75;
+    let label = edgeLabelPosition(route, edge, fromNode, toNode);
+    if (edge.label && label.left < EDGE_SCENE_PADDING) {
+      gutterX += (EDGE_SCENE_PADDING - label.left) / 0.75 + 1e-9;
       route = routeEdge(fromNode, toNode, { ...edge, gutterX });
+      label = edgeLabelPosition(route, edge, fromNode, toNode);
     }
+    const pathPoints = Object.values(route.points);
     fittedWidth = Math.max(
       fittedWidth,
       gutterX + FEEDBACK_MARGIN,
-      route.labelPoint[0] + labelWidth / 2,
+      ...pathPoints.map(([x]) => x + EDGE_SCENE_PADDING),
+      edge.label ? label.right + EDGE_SCENE_PADDING : 0,
+    );
+    fittedHeight = Math.max(
+      fittedHeight,
+      ...pathPoints.map(([, y]) => y + EDGE_SCENE_PADDING),
+      edge.label ? label.bottom + EDGE_SCENE_PADDING : 0,
     );
     return { ...edge, gutterX };
   });
-  return { edges: fittedEdges, width: fittedWidth };
+  return { edges: fittedEdges, width: fittedWidth, height: fittedHeight };
 }
 
 function tierRectangles(tiers, nodes, canvasWidth, { preserveSequenceGeometry = false } = {}) {
@@ -203,11 +217,11 @@ function fullyPositionedLayout(normalized, input) {
   const classifiedEdges = normalized.kind === "flowchart"
     ? layoutFlowchart(normalized).edges
     : normalized.edges.map((edge) => ({ ...edge }));
-  const feedback = fitFeedback(classifiedEdges, normalized.nodes, fitted.size.width);
+  const feedback = fitFeedback(classifiedEdges, normalized.nodes, fitted.size.width, fitted.size.height);
   return {
     ...normalized,
     width: feedback.width,
-    height: fitted.size.height,
+    height: feedback.height,
     tiers: fitted.tiers,
     nodes: normalized.nodes.map((node) => ({ ...node })),
     edges: feedback.edges,
@@ -234,8 +248,9 @@ function mixedLayout(normalized, input, ideal) {
   const size = contentSize(merged);
   let width = Math.max(input.width ?? 0, ideal.width, size.width);
   let height = Math.max(input.height ?? 0, ideal.height, size.height);
-  const feedback = fitFeedback(ideal.edges, merged, width);
+  const feedback = fitFeedback(ideal.edges, merged, width, height);
   width = feedback.width;
+  height = feedback.height;
   const tiers = normalized.kind === "architecture" && normalized.tiers.length > 0
     ? tierRectangles(normalized.tiers, merged, width)
     : ideal.tiers.map((tier) => ({ ...tier }));
@@ -258,8 +273,13 @@ export function layoutDiagram(input, { mode = "missing" } = {}) {
 
   const ideal = automaticLayout(normalized);
   if (mode === "force") {
-    const feedback = fitFeedback(ideal.edges, ideal.nodes, ideal.width);
-    return markInternalLayout({ ...ideal, width: feedback.width, edges: feedback.edges });
+    const feedback = fitFeedback(ideal.edges, ideal.nodes, ideal.width, ideal.height);
+    return markInternalLayout({
+      ...ideal,
+      width: feedback.width,
+      height: feedback.height,
+      edges: feedback.edges,
+    });
   }
   return markInternalLayout(mixedLayout(normalized, rawInput, ideal));
 }
@@ -357,9 +377,89 @@ function validatePreparedTiers(diagram) {
   return issues;
 }
 
+function validateFiniteGeometry(diagram) {
+  const issues = [];
+  for (const dimension of ["width", "height"]) {
+    if (!Number.isFinite(diagram[dimension])) {
+      issues.push({
+        code: `layout-canvas-${dimension}`,
+        nodeIds: [],
+        message: `Canvas ${dimension} must remain finite after layout`,
+      });
+    }
+  }
+  diagram.nodes.forEach((node) => {
+    for (const [side, value] of [
+      ["right", node.x + node.width],
+      ["bottom", node.y + node.height],
+    ]) {
+      if (!Number.isFinite(value)) {
+        issues.push({
+          code: `layout-node-${side}`,
+          nodeIds: [node.id],
+          message: `Node ${node.id} ${side} bound must remain finite after layout`,
+        });
+      }
+    }
+  });
+  effectiveTiers(diagram).forEach((tier) => {
+    for (const [side, value] of [
+      ["right", tier.x + tier.width],
+      ["bottom", tier.y + tier.height],
+    ]) {
+      if (!Number.isFinite(value)) {
+        issues.push({
+          code: `layout-tier-${side}`,
+          nodeIds: [tier.id],
+          message: `Tier ${tier.id} ${side} bound must remain finite after layout`,
+        });
+      }
+    }
+  });
+  const nodeMap = new Map(diagram.nodes.map((node) => [node.id, node]));
+  diagram.edges.forEach((edge) => {
+    if (edge.route !== "feedback") return;
+    const nodeIds = [edge.from, edge.to];
+    if (!Number.isFinite(edge.gutterX)) {
+      issues.push({
+        code: "layout-feedback-gutter",
+        nodeIds,
+        message: `Feedback edge ${edge.from} to ${edge.to} gutter must remain finite after layout`,
+      });
+    }
+    const fromNode = nodeMap.get(edge.from);
+    const toNode = nodeMap.get(edge.to);
+    const route = routeEdge(fromNode, toNode, edge);
+    if (![route.points.control1, route.points.control2].flat().every(Number.isFinite)) {
+      issues.push({
+        code: "layout-feedback-control",
+        nodeIds,
+        message: `Feedback edge ${edge.from} to ${edge.to} controls must remain finite after layout`,
+      });
+    }
+    if (!Object.values(route.points).flat().every(Number.isFinite)) {
+      issues.push({
+        code: "layout-feedback-path-bounds",
+        nodeIds,
+        message: `Feedback edge ${edge.from} to ${edge.to} path bounds must remain finite after layout`,
+      });
+    }
+    const label = edgeLabelPosition(route, edge, fromNode, toNode);
+    if (![label.left, label.right, label.top, label.bottom].every(Number.isFinite)) {
+      issues.push({
+        code: "layout-feedback-label-bounds",
+        nodeIds,
+        message: `Feedback edge ${edge.from} to ${edge.to} label bounds must remain finite after layout`,
+      });
+    }
+  });
+  return issues;
+}
+
 export function prepareDiagram(input, { layout = "missing" } = {}) {
   const result = layoutDiagram(input, { mode: layout });
   const issues = [
+    ...validateFiniteGeometry(result),
     ...validateLayout(result, { padding: 0, gap: 0 }),
     ...validatePreparedTiers(result),
   ];

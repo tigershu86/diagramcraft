@@ -1,6 +1,6 @@
 import React, { useId, useMemo, useState } from "react";
 
-import { edgeLabelWidth, routeEdge } from "./geometry.js";
+import { edgeLabelPosition, routeEdge } from "./geometry.js";
 import { prepareDiagram } from "./layout/index.js";
 import { NODE_STYLES, TOKENS, nodeStyle } from "./theme.js";
 
@@ -169,13 +169,7 @@ function DiagramEdge({ edge, fromNode, toNode, selected, markerId, activeMarkerI
   const stroke = connected ? fromStyle.accent : edge.dashed ? TOKENS.edgeMuted : TOKENS.edge;
   const markerSuffix = `${edge.from}-${edge.to}`.replace(/[^A-Za-z0-9_-]/g, "-");
   const selectedMarkerId = `${activeMarkerId}-${markerSuffix}`;
-  let [labelX, labelY] = route.labelPoint;
-  const shortHorizontal = ["left", "right"].includes(route.fromAnchor)
-    && ["left", "right"].includes(route.toAnchor)
-    && Math.abs(route.points.end[0] - route.points.start[0]) < 80
-    && Math.abs(route.points.end[1] - route.points.start[1]) < 2;
-  if (shortHorizontal) labelY = Math.min(fromNode.y, toNode.y) - 10;
-  const labelWidth = edgeLabelWidth(edge.label);
+  const label = edgeLabelPosition(route, edge, fromNode, toNode);
 
   return h("g", {
     opacity: dimmed ? 0.16 : 1,
@@ -201,18 +195,20 @@ function DiagramEdge({ edge, fromNode, toNode, selected, markerId, activeMarkerI
     edge.label ? h("g", { key: "label" }, [
       h("rect", {
         key: "pill",
-        x: labelX - labelWidth / 2,
-        y: labelY - 9,
-        width: labelWidth,
-        height: 18,
+        x: label.left,
+        y: label.top,
+        width: label.width,
+        height: label.height,
         rx: 5,
         fill: TOKENS.edgeLabelFill,
         opacity: 0.97,
       }),
       h("text", {
         key: "text",
-        x: labelX,
-        y: labelY + 1,
+        x: label.x,
+        y: label.y + 1,
+        textLength: label.textLength,
+        lengthAdjust: "spacingAndGlyphs",
         textAnchor: "middle",
         dominantBaseline: "central",
         fontSize: 10,

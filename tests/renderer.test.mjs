@@ -52,6 +52,28 @@ test("DiagramRenderer rejects invalid graph data before rendering", () => {
   );
 });
 
+test("DiagramRenderer rejects non-finite derived geometry before producing SVG", () => {
+  assert.throws(
+    () => renderToStaticMarkup(React.createElement(DiagramRenderer, {
+      diagram: {
+        kind: "flowchart",
+        title: "Overflowing render",
+        nodes: [{
+          id: "overflow",
+          label: "Overflow",
+          type: "process",
+          x: Number.MAX_VALUE,
+          y: 20,
+          width: Number.MAX_VALUE,
+          height: 20,
+        }],
+        edges: [{ from: "overflow", to: "overflow", label: "again" }],
+      },
+    })),
+    /layout-canvas-width[\s\S]*layout-node-right[\s\S]*layout-feedback-gutter/,
+  );
+});
+
 test("DiagramRenderer prepares and renders a coordinate-free flow", () => {
   const html = renderToStaticMarkup(React.createElement(DiagramRenderer, {
     diagram: {
@@ -85,6 +107,74 @@ test("DiagramRenderer renders cyclic feedback through the outer gutter", () => {
   }));
 
   assert.match(html, /M 410 172 C 664 172 664 60 410 60/);
+});
+
+test("DiagramRenderer renders a visible feedback self-loop without lifting its label above the canvas", () => {
+  const html = renderToStaticMarkup(React.createElement(DiagramRenderer, {
+    diagram: {
+      kind: "flowchart",
+      title: "Tiny self loop",
+      width: 120,
+      height: 80,
+      nodes: [{ id: "self", label: "Self", type: "process", x: 20, y: 0, width: 20, height: 20 }],
+      edges: [{ from: "self", to: "self", label: "again" }],
+    },
+  }));
+
+  assert.match(html, /M 40 10 C \d+(?:\.\d+)? 58 \d+(?:\.\d+)? 58 40 10/);
+  const pillY = Number(html.match(/<rect x="[^"]+" y="([^"]+)" width="[^"]+" height="18" rx="5"/)?.[1]);
+  assert.ok(pillY >= 12);
+});
+
+test("DiagramRenderer keeps a long feedback label pill padded inside the scene", () => {
+  const label = "Return to the beginning after the reviewer requests another complete revision cycle and include every required follow-up note before requesting one more review";
+  const html = renderToStaticMarkup(React.createElement(DiagramRenderer, {
+    diagram: {
+      kind: "flowchart",
+      title: "Padded feedback",
+      nodes: [
+        { id: "first", label: "First", type: "process" },
+        { id: "second", label: "Second", type: "process" },
+      ],
+      edges: [{ from: "first", to: "second" }, { from: "second", to: "first", label }],
+    },
+  }));
+  const viewBox = html.match(/viewBox="0 0 ([^"]+) ([^"]+)"/);
+  const pill = html.match(/<rect x="([^"]+)" y="([^"]+)" width="([^"]+)" height="18" rx="5"/);
+  assert.ok(viewBox && pill);
+  const canvasWidth = Number(viewBox[1]);
+  const canvasHeight = Number(viewBox[2]);
+  const [x, y, width] = pill.slice(1).map(Number);
+
+  assert.ok(x >= 12);
+  assert.ok(x + width <= canvasWidth - 12);
+  assert.ok(y >= 12);
+  assert.ok(y + 18 <= canvasHeight - 12);
+});
+
+test("DiagramRenderer constrains CJK label text to its grapheme-aware pill", () => {
+  const label = "回".repeat(20);
+  const html = renderToStaticMarkup(React.createElement(DiagramRenderer, {
+    diagram: {
+      kind: "flowchart",
+      title: "CJK feedback",
+      nodes: [
+        { id: "first", label: "First", type: "process" },
+        { id: "second", label: "Second", type: "process" },
+      ],
+      edges: [{ from: "first", to: "second" }, { from: "second", to: "first", label }],
+    },
+  }));
+  const canvasWidth = Number(html.match(/viewBox="0 0 ([^"]+) [^"]+"/)?.[1]);
+  const pill = html.match(/<rect x="([^"]+)" y="[^"]+" width="([^"]+)" height="18" rx="5"/);
+  assert.ok(pill);
+  const x = Number(pill[1]);
+  const width = Number(pill[2]);
+
+  assert.ok(width >= 213 && width <= 215);
+  assert.ok(x >= 12 && x + width <= canvasWidth - 12);
+  assert.match(html, /textLength="200"/);
+  assert.match(html, /lengthAdjust="spacingAndGlyphs"/);
 });
 
 test("DiagramRenderer consumes a prepared cyclic diagram", () => {

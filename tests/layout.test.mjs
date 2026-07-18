@@ -62,6 +62,23 @@ function longFeedbackFlow() {
   };
 }
 
+function assertFeedbackScenePadding(diagram, padding = 12) {
+  const edge = diagram.edges.find(({ route }) => route === "feedback");
+  const nodeMap = new Map(diagram.nodes.map((node) => [node.id, node]));
+  const route = routeEdge(nodeMap.get(edge.from), nodeMap.get(edge.to), edge);
+  const labelWidth = edge.label ? Math.max(36, edge.label.length * 6.2 + 14) : 0;
+  const labelHeight = 18;
+
+  assert.ok(route.labelPoint[0] - labelWidth / 2 >= padding);
+  assert.ok(route.labelPoint[0] + labelWidth / 2 <= diagram.width - padding);
+  assert.ok(route.labelPoint[1] - labelHeight / 2 >= padding);
+  assert.ok(route.labelPoint[1] + labelHeight / 2 <= diagram.height - padding);
+  for (const point of Object.values(route.points)) {
+    assert.ok(point[0] >= 0 && point[0] <= diagram.width - padding);
+    assert.ok(point[1] >= 0 && point[1] <= diagram.height - padding);
+  }
+}
+
 const architecture = {
   kind: "architecture",
   title: "Tiered",
@@ -369,6 +386,70 @@ test("forced preparation fits a long cyclic feedback label pill inside the canva
   const result = prepareDiagram(longFeedbackFlow(), { layout: "force" });
 
   assertFeedbackLabelPillFits(result);
+});
+
+test("missing, mixed, and force layouts retain scene padding around feedback", () => {
+  const mixed = longFeedbackFlow();
+  mixed.nodes[0] = { ...mixed.nodes[0], x: 20, y: 20 };
+  const results = [
+    layoutDiagram(longFeedbackFlow()),
+    layoutDiagram(mixed),
+    layoutDiagram(longFeedbackFlow(), { mode: "force" }),
+  ];
+
+  results.forEach((result) => assertFeedbackScenePadding(result));
+});
+
+test("manual self-loop expands the canvas for its path and label bounds", () => {
+  const result = prepareDiagram({
+    kind: "flowchart",
+    title: "Bottom self loop",
+    width: 120,
+    height: 100,
+    nodes: [{ id: "self", label: "Self", type: "process", x: 20, y: 70, width: 20, height: 20 }],
+    edges: [{ from: "self", to: "self", label: "again" }],
+  });
+
+  assert.ok(result.height > 100);
+  assertFeedbackScenePadding(result);
+});
+
+test("prepareDiagram aggregates non-finite derived node and feedback geometry", () => {
+  const input = {
+    kind: "flowchart",
+    title: "Overflowing geometry",
+    nodes: [{
+      id: "overflow",
+      label: "Overflow",
+      type: "process",
+      x: Number.MAX_VALUE,
+      y: 20,
+      width: Number.MAX_VALUE,
+      height: 20,
+    }],
+    edges: [{ from: "overflow", to: "overflow", label: "again" }],
+  };
+
+  assert.throws(() => prepareDiagram(input), (error) => {
+    assert.match(error.message, /layout-canvas-width/);
+    assert.match(error.message, /layout-node-right[\s\S]*overflow/);
+    assert.match(error.message, /layout-feedback-gutter/);
+    assert.match(error.message, /layout-feedback-control/);
+    assert.match(error.message, /layout-feedback-label-bounds/);
+    return true;
+  });
+});
+
+test("prepareDiagram accepts large derived geometry that remains finite", () => {
+  const result = prepareDiagram({
+    kind: "flowchart",
+    title: "Large finite geometry",
+    nodes: [{ id: "large", label: "Large", type: "process", x: 1e300, y: 20, width: 1e300, height: 20 }],
+    edges: [],
+  });
+
+  assert.ok(Number.isFinite(result.width));
+  assert.ok(Number.isFinite(result.nodes[0].x + result.nodes[0].width));
 });
 
 test("prepareDiagram lays out a coordinate-free feedback flow with metadata", () => {
