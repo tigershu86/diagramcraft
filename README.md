@@ -84,7 +84,7 @@ const diagram = {
 };
 ```
 
-Provide `x` and `y` together to preserve a node's manual position; nodes without that pair are laid out automatically. In the preview, **Force layout** rearranges the whole diagram and **Restore manual** returns to the original geometry. The same prepared diagram can be downloaded as standalone SVG or 2× PNG. Machine consumers can validate data against the [Draft 2020-12 diagram schema](./schema/diagram.schema.json) before rendering.
+Provide `x` and `y` together to preserve a node's manual position; nodes without that pair are laid out automatically. In the preview, **自动重排** (Force layout) rearranges the whole diagram and **恢复原布局** (Restore manual) returns to the original geometry. The same prepared diagram can be downloaded as standalone SVG or 2× PNG. Machine consumers can validate data against the [Draft 2020-12 diagram schema](./schema/diagram.schema.json) before rendering.
 
 ## Development
 

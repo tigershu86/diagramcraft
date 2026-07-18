@@ -12,6 +12,17 @@ command -v zip >/dev/null 2>&1 || {
 }
 
 mkdir -p "${OUTPUT_DIR}"
+OUTPUT_DIR="$(cd "${OUTPUT_DIR}" && pwd -P)"
+
+for skill in arch-diagram flowchart; do
+  SOURCE_SKILL="$(cd "${PROJECT_ROOT}/${skill}" && pwd -P)"
+  case "${OUTPUT_DIR}/" in
+    "${SOURCE_SKILL}/"*)
+      echo "Refusing to package skills into source skill directory: ${OUTPUT_DIR}" >&2
+      exit 1
+      ;;
+  esac
+done
 
 for skill in arch-diagram flowchart; do
   STAGING_ROOT="${PACKAGE_TMP}/staging-${skill}"
