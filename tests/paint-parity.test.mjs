@@ -173,17 +173,20 @@ test("node style is closed to the four renderer paint fields", () => {
 
 test("runtime accepts cross-realm plain styles and safely rejects exotic or hostile objects", () => {
   const crossRealmStyle = runInNewContext('({ fill: "#abc" })');
-  const crossRealmDiagram = {
-    ...baseDiagram,
-    nodes: [{ ...baseDiagram.nodes[0], style: crossRealmStyle }, baseDiagram.nodes[1]],
-  };
-  assert.equal(validateJson(crossRealmDiagram), true, JSON.stringify(validateJson.errors));
-  assert.deepEqual(validateDiagram(crossRealmDiagram), []);
-  assert.doesNotThrow(() => prepareDiagram(crossRealmDiagram));
-  assert.doesNotThrow(
-    () => renderToStaticMarkup(React.createElement(DiagramRenderer, { diagram: crossRealmDiagram })),
-  );
-  assert.doesNotThrow(() => renderDiagramSvg(crossRealmDiagram));
+  const nullPrototypeStyle = Object.assign(Object.create(null), { fill: "#abc" });
+  for (const style of [crossRealmStyle, nullPrototypeStyle]) {
+    const plainRecordDiagram = {
+      ...baseDiagram,
+      nodes: [{ ...baseDiagram.nodes[0], style }, baseDiagram.nodes[1]],
+    };
+    assert.equal(validateJson(plainRecordDiagram), true, JSON.stringify(validateJson.errors));
+    assert.deepEqual(validateDiagram(plainRecordDiagram), []);
+    assert.doesNotThrow(() => prepareDiagram(plainRecordDiagram));
+    assert.doesNotThrow(
+      () => renderToStaticMarkup(React.createElement(DiagramRenderer, { diagram: plainRecordDiagram })),
+    );
+    assert.doesNotThrow(() => renderDiagramSvg(plainRecordDiagram));
+  }
 
   class StyleInstance {
     constructor() {
@@ -213,5 +216,85 @@ test("runtime accepts cross-realm plain styles and safely rejects exotic or host
       code === "invalid-node-style" && path === "nodes[0].style"
     )));
     assert.throws(() => prepareDiagram(diagram), /invalid-node-style[\s\S]*nodes\[0\]\.style/);
+  }
+});
+
+test("preparation snapshots a stateful style field exactly once before validation and rendering", () => {
+  for (const secondValue of ["url(#escaped)", 42]) {
+    let fillReads = 0;
+    const style = new Proxy({ fill: "#abc" }, {
+      get(target, key, receiver) {
+        if (key !== "fill") return Reflect.get(target, key, receiver);
+        fillReads += 1;
+        return fillReads === 1 ? "#abc" : secondValue;
+      },
+    });
+    const input = {
+      ...baseDiagram,
+      nodes: [{ ...baseDiagram.nodes[0], style }, baseDiagram.nodes[1]],
+    };
+
+    const prepared = prepareDiagram(input);
+    assert.equal(fillReads, 1);
+    assert.notEqual(prepared.nodes[0].style, style);
+    assert.equal(Object.getPrototypeOf(prepared.nodes[0].style), Object.prototype);
+    assert.deepEqual(prepared.nodes[0].style, { fill: "#abc" });
+    const preview = renderToStaticMarkup(React.createElement(DiagramRenderer, { diagram: prepared }));
+    const exported = renderDiagramSvg(prepared);
+    assert.equal(fillReads, 1);
+    assert.match(preview, /fill="#abc"/);
+    assert.match(exported, /fill="#abc"/);
+    assert.doesNotMatch(preview, /url\(#escaped\)|fill="42"/);
+    assert.doesNotMatch(exported, /url\(#escaped\)|fill="42"/);
+  }
+});
+
+test("prepared styles are independent snapshots of ordinary caller objects", () => {
+  const style = { fill: "#abc", stroke: "#123456" };
+  const input = {
+    ...baseDiagram,
+    nodes: [{ ...baseDiagram.nodes[0], style }, baseDiagram.nodes[1]],
+  };
+  const prepared = prepareDiagram(input);
+  style.fill = "url(#late-mutation)";
+  style.stroke = 42;
+
+  assert.deepEqual(prepared.nodes[0].style, { fill: "#abc", stroke: "#123456" });
+  assert.match(renderDiagramSvg(prepared), /fill="#abc"/);
+  assert.doesNotMatch(renderDiagramSvg(prepared), /late-mutation|stroke="42"/);
+});
+
+test("style snapshot failures become stable invalid-node-style diagnostics", () => {
+  const throwing = (trap) => new Proxy({ fill: "#abc" }, {
+    [trap]() { throw new Error(`hostile ${trap}`); },
+  });
+  const unstableDescriptor = new Proxy({ fill: "#abc" }, {
+    ownKeys() { return ["fill"]; },
+    getOwnPropertyDescriptor() { return undefined; },
+  });
+  const symbolStyle = { fill: "#abc", [Symbol("hidden")]: "url(#escaped)" };
+  const duplicateKeys = new Proxy({ fill: "#abc" }, {
+    ownKeys() { return ["fill", "fill"]; },
+  });
+  const hostileStyles = [
+    throwing("ownKeys"),
+    throwing("getOwnPropertyDescriptor"),
+    throwing("get"),
+    unstableDescriptor,
+    duplicateKeys,
+    symbolStyle,
+  ];
+
+  for (const style of hostileStyles) {
+    const diagram = {
+      ...baseDiagram,
+      nodes: [{ ...baseDiagram.nodes[0], style }, baseDiagram.nodes[1]],
+    };
+    assert.throws(() => prepareDiagram(diagram), /invalid-node-style[\s\S]*nodes\[0\]\.style/);
+    assert.throws(
+      () => renderToStaticMarkup(React.createElement(DiagramRenderer, { diagram })),
+      /invalid-node-style[\s\S]*nodes\[0\]\.style/,
+    );
+    assert.throws(() => renderDiagramSvg(diagram), /invalid-node-style[\s\S]*nodes\[0\]\.style/);
   }
 });

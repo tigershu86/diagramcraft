@@ -123,22 +123,37 @@ export function isSupportedPaint(value) {
 }
 
 const NATIVE_OBJECT_SOURCE = Function.prototype.toString.call(Object);
+const INVALID_RECORD_SNAPSHOT = Object.freeze({ ok: false });
 
-export function isPlainRecord(value) {
-  if (value === null || typeof value !== "object") return false;
+export function snapshotPlainRecord(value) {
+  if (value === null || typeof value !== "object") return INVALID_RECORD_SNAPSHOT;
   try {
-    if (Array.isArray(value)) return false;
+    if (Array.isArray(value)) return INVALID_RECORD_SNAPSHOT;
     const prototype = Object.getPrototypeOf(value);
-    if (prototype === null) {
-      Object.getOwnPropertyNames(value);
-      return true;
+    if (prototype !== null) {
+      const constructor = Object.getOwnPropertyDescriptor(prototype, "constructor")?.value;
+      if (typeof constructor !== "function"
+        || Function.prototype.toString.call(constructor) !== NATIVE_OBJECT_SOURCE) {
+        return INVALID_RECORD_SNAPSHOT;
+      }
     }
-    const constructor = Object.getOwnPropertyDescriptor(prototype, "constructor")?.value;
-    if (typeof constructor !== "function"
-      || Function.prototype.toString.call(constructor) !== NATIVE_OBJECT_SOURCE) return false;
-    Object.getOwnPropertyNames(value);
-    return true;
+
+    const keys = Reflect.ownKeys(value);
+    const snapshot = {};
+    for (const key of keys) {
+      if (typeof key !== "string") return INVALID_RECORD_SNAPSHOT;
+      const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined) return INVALID_RECORD_SNAPSHOT;
+      const fieldValue = Reflect.get(value, key);
+      Object.defineProperty(snapshot, key, {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value: fieldValue,
+      });
+    }
+    return { ok: true, value: snapshot };
   } catch {
-    return false;
+    return INVALID_RECORD_SNAPSHOT;
   }
 }

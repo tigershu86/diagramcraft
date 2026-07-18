@@ -14,7 +14,7 @@ import {
   NODE_TYPES,
   TIER_FIELDS,
 } from "./contract.js";
-import { isPlainRecord, isSupportedPaint, NODE_STYLE_PAINT_FIELDS } from "./paint.js";
+import { isSupportedPaint, NODE_STYLE_PAINT_FIELDS, snapshotPlainRecord } from "./paint.js";
 
 const kinds = new Set(DIAGRAM_KINDS);
 const anchors = new Set(ANCHORS);
@@ -57,7 +57,25 @@ function validateKnownFields(issues, value, allowedFields, code, path, descripti
   });
 }
 
-export function validateDiagram(diagram, options = {}) {
+function snapshotDiagramStyles(diagram) {
+  if (!diagram || typeof diagram !== "object" || Array.isArray(diagram) || !Array.isArray(diagram.nodes)) {
+    return diagram;
+  }
+  return {
+    ...diagram,
+    nodes: diagram.nodes.map((node) => {
+      if (!node || typeof node !== "object" || Array.isArray(node)) return node;
+      const snapshotNode = { ...node };
+      if (snapshotNode.style !== undefined) {
+        const styleSnapshot = snapshotPlainRecord(snapshotNode.style);
+        snapshotNode.style = styleSnapshot.ok ? styleSnapshot.value : null;
+      }
+      return snapshotNode;
+    }),
+  };
+}
+
+function validateDiagramSnapshot(diagram, options = {}) {
   const issues = [];
   const layout = options.layout || "missing";
 
@@ -187,32 +205,26 @@ export function validateDiagram(diagram, options = {}) {
       issues.push(issue("invalid-node-font-size", `${nodePath}.fontSize`, "node fontSize must be a positive number"));
     }
     if (node.style !== undefined) {
-      if (!isPlainRecord(node.style)) {
+      if (!node.style || typeof node.style !== "object" || Array.isArray(node.style)) {
         issues.push(issue("invalid-node-style", `${nodePath}.style`, "node style must be a plain object"));
       } else {
-        const issueStart = issues.length;
-        try {
-          validateKnownFields(
-            issues,
-            node.style,
-            nodeStylePaintFields,
-            "unknown-node-style-field",
-            `${nodePath}.style`,
-            "node style field",
-          );
-          NODE_STYLE_PAINT_FIELDS.forEach((field) => {
-            if (Object.hasOwn(node.style, field) && !isSupportedPaint(node.style[field])) {
-              issues.push(issue(
-                "invalid-node-style-paint",
-                `${nodePath}.style.${field}`,
-                `node style ${field} must be a supported standalone paint`,
-              ));
-            }
-          });
-        } catch {
-          issues.splice(issueStart);
-          issues.push(issue("invalid-node-style", `${nodePath}.style`, "node style must be a safely readable plain object"));
-        }
+        validateKnownFields(
+          issues,
+          node.style,
+          nodeStylePaintFields,
+          "unknown-node-style-field",
+          `${nodePath}.style`,
+          "node style field",
+        );
+        NODE_STYLE_PAINT_FIELDS.forEach((field) => {
+          if (Object.hasOwn(node.style, field) && !isSupportedPaint(node.style[field])) {
+            issues.push(issue(
+              "invalid-node-style-paint",
+              `${nodePath}.style.${field}`,
+              `node style ${field} must be a supported standalone paint`,
+            ));
+          }
+        });
       }
     }
     if (node.shape !== undefined && !shapes.has(node.shape)) issues.push(issue("invalid-node-shape", `${nodePath}.shape`, "node shape must be supported"));
@@ -259,8 +271,12 @@ export function validateDiagram(diagram, options = {}) {
   return issues;
 }
 
-export function validatePreparedDiagram(diagram, options = {}) {
-  const issues = validateDiagram(diagram, options);
+export function validateDiagram(diagram, options = {}) {
+  return validateDiagramSnapshot(snapshotDiagramStyles(diagram), options);
+}
+
+function validatePreparedDiagramSnapshot(diagram, options = {}) {
+  const issues = validateDiagramSnapshot(diagram, options);
   if (issues.length > 0) return issues;
   const normalized = normalizeValidatedDiagram(diagram);
 
@@ -287,6 +303,10 @@ export function validatePreparedDiagram(diagram, options = {}) {
   return issues;
 }
 
+export function validatePreparedDiagram(diagram, options = {}) {
+  return validatePreparedDiagramSnapshot(snapshotDiagramStyles(diagram), options);
+}
+
 function assertWith(validator, diagram, options) {
   const issues = validator(diagram, options);
   throwForIssues(issues);
@@ -305,9 +325,10 @@ export function assertDiagram(diagram, options = {}) {
 }
 
 export function assertPreparedDiagram(diagram, options = {}) {
-  const issues = validatePreparedDiagram(diagram, options);
+  const snapshot = snapshotDiagramStyles(diagram);
+  const issues = validatePreparedDiagramSnapshot(snapshot, options);
   throwForIssues(issues);
-  return normalizeValidatedDiagram(diagram);
+  return normalizeValidatedDiagram(snapshot);
 }
 
 function definedEntries(value) {
@@ -343,6 +364,7 @@ function normalizeValidatedDiagram(diagram) {
 }
 
 export function normalizeDiagram(diagram, options = {}) {
-  assertDiagram(diagram, options);
-  return normalizeValidatedDiagram(diagram);
+  const snapshot = snapshotDiagramStyles(diagram);
+  throwForIssues(validateDiagramSnapshot(snapshot, options));
+  return normalizeValidatedDiagram(snapshot);
 }
