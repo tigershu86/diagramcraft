@@ -15,6 +15,16 @@ export const EXAMPLE_OPTIONS = [
   { id: "flowchart", label: "Login flow", detail: "10 nodes", diagram: LOGIN_FLOW },
 ];
 
+export function tabIdForKey(activeId, key) {
+  const index = EXAMPLE_OPTIONS.findIndex((option) => option.id === activeId);
+  if (index < 0) return null;
+  if (key === "Home") return EXAMPLE_OPTIONS[0].id;
+  if (key === "End") return EXAMPLE_OPTIONS.at(-1).id;
+  if (key === "ArrowLeft") return EXAMPLE_OPTIONS[(index - 1 + EXAMPLE_OPTIONS.length) % EXAMPLE_OPTIONS.length].id;
+  if (key === "ArrowRight") return EXAMPLE_OPTIONS[(index + 1) % EXAMPLE_OPTIONS.length].id;
+  return null;
+}
+
 function ProductHeader() {
   return h("header", { className: "product-header" }, [
     h("div", { className: "brand-lockup", key: "brand" }, [
@@ -49,6 +59,13 @@ function ExampleTabs({ activeId, onChange }) {
         "aria-controls": `panel-${option.id}`,
         tabIndex: selected ? 0 : -1,
         onClick: () => onChange(option.id),
+        onKeyDown: (event) => {
+          const nextId = tabIdForKey(activeId, event.key);
+          if (!nextId) return;
+          event.preventDefault();
+          onChange(nextId);
+          event.currentTarget.parentElement?.querySelector(`#tab-${nextId}`)?.focus();
+        },
       }, [
         h("span", { key: "label" }, option.label),
         h("small", { key: "detail" }, option.detail),

@@ -21,7 +21,7 @@ const diagram = {
 test("DiagramRenderer emits an accessible SVG with data-driven nodes and edges", () => {
   const html = renderToStaticMarkup(React.createElement(DiagramRenderer, { diagram }));
 
-  assert.match(html, /<svg[^>]+role="img"/);
+  assert.match(html, /<svg[^>]+role="group"/);
   assert.doesNotMatch(html, /<svg[^>]+height="auto"/);
   assert.match(html, /class="diagram-frame" style="[^"]*max-width:452px;[^"]*margin:0 auto/);
   assert.match(html, /<svg[^>]+style="[^"]*min-width:420px"/);
@@ -31,6 +31,15 @@ test("DiagramRenderer emits an accessible SVG with data-driven nodes and edges",
   assert.match(html, /aria-label="Approved\?"/);
   assert.match(html, /M 210 64 C/);
   assert.match(html, />review<\/text>/);
+});
+
+test("DiagramRenderer ignores an initial selection missing from the current diagram", () => {
+  const html = renderToStaticMarkup(React.createElement(DiagramRenderer, {
+    initialSelectedId: "gone",
+    diagram,
+  }));
+
+  assert.doesNotMatch(html, /opacity="0\.16"/);
 });
 
 test("DiagramRenderer rejects invalid graph data before rendering", () => {

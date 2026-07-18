@@ -272,6 +272,7 @@ export function DiagramRenderer({
   const markerId = `${reactId}-arrow`;
   const activeMarkerId = `${reactId}-arrow-active`;
   const nodeMap = new Map(diagram.nodes.map((node) => [node.id, node]));
+  const selectedId = nodeMap.has(selected) ? selected : null;
   const inferredLegend = [...new Set(diagram.nodes.map((node) => node.type))];
   const legend = diagram.legend.length ? diagram.legend : inferredLegend;
   const defaultMinWidth = Math.min(diagram.width, diagram.kind === "architecture" ? 560 : 520);
@@ -311,7 +312,7 @@ export function DiagramRenderer({
       edge,
       fromNode: nodeMap.get(edge.from),
       toNode: nodeMap.get(edge.to),
-      selected,
+      selected: selectedId,
       markerId,
       activeMarkerId,
     })),
@@ -319,7 +320,7 @@ export function DiagramRenderer({
       key: node.id,
       node,
       hovered: hovered === node.id,
-      selected: selected === node.id,
+      selected: selectedId === node.id,
       onHover: setHovered,
       onSelect: (id) => setSelected((current) => current === id ? null : id),
       idPrefix: reactId,
@@ -354,7 +355,7 @@ export function DiagramRenderer({
       borderRadius: 16,
       boxShadow: "0 1px 3px rgba(15,23,42,0.06), 0 14px 40px rgba(15,23,42,0.08)",
     } }, h("svg", {
-      role: "img",
+      role: "group",
       "aria-labelledby": `${titleId} ${descriptionId}`,
       viewBox: `0 0 ${diagram.width} ${diagram.height}`,
       width: "100%",

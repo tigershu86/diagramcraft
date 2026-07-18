@@ -83,6 +83,7 @@ for (const skill of SKILLS) {
 const archSkill = read("arch-diagram/SKILL.md");
 const flowSkill = read("flowchart/SKILL.md");
 const readme = read("README.md");
+const packageJson = JSON.parse(read("package.json"));
 const architectureArtifacts = [
   ["README.md", readme],
   ["arch-diagram/SKILL.md", archSkill],
@@ -104,6 +105,8 @@ check(readme.includes("rx = 11") && archSkill.includes("rx=11") && flowSkill.inc
   "shared card radius must remain rx=11 in README and both skills");
 check(fs.existsSync(path.join(ROOT, "flowchart/references/flowchart.md")),
   "flowchart core pattern reference is missing");
+check(packageJson.engines?.node === ">=22.12.0",
+  "package.json: Node engine must remain at Vite's >=22.12.0 floor");
 for (const [relativePath, source] of architectureArtifacts) {
   for (const token of canonicalArchitectureTokens) {
     check(source.includes(token), `${relativePath}: missing canonical architecture token ${token}`);

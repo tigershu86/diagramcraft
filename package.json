@@ -12,7 +12,7 @@
     "package:skills": "bash scripts/package-skills.sh"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12.0"
   },
   "dependencies": {
     "react": "^19.2.7",

@@ -20,7 +20,10 @@ const validDiagram = {
 };
 
 test("normalizeDiagram applies canonical node sizes and edge defaults", () => {
-  const normalized = normalizeDiagram(validDiagram);
+  const normalized = normalizeDiagram({
+    ...validDiagram,
+    tiers: [{ label: "Top", x: 0, y: 0, width: 640, height: 80 }],
+  });
 
   assert.deepEqual(
     normalized.nodes.map(({ id, width, height }) => ({ id, width, height })),
@@ -80,4 +83,26 @@ test("assertDiagram throws one actionable error containing every issue", () => {
     () => assertDiagram({ ...validDiagram, edges: [{ from: "ghost", to: "missing" }] }),
     /missing-edge-source[\s\S]*missing-edge-target/,
   );
+});
+
+test("validateDiagram rejects raw values that the renderer cannot safely consume", () => {
+  const issues = validateDiagram({
+    ...validDiagram,
+    title: 42,
+    subtitle: false,
+    nodeDefaults: { width: "wide" },
+    tiers: [{ id: 4, label: false, x: "left", y: "top", width: 0, height: null, color: 7 }],
+    legend: ["unknown", { type: "service", label: 42 }, { type: "unknown", label: "Unknown" }],
+    nodes: [{ id: "start", label: 1, type: false, shape: "circle", x: 10, y: 10, width: "wide", height: 0 }],
+    edges: [{ from: false, to: false, label: 2, dashed: "yes", fromAnchor: "middle", toAnchor: 3 }],
+  });
+
+  assert.deepEqual(issues.map((entry) => entry.code), [
+    "invalid-title", "invalid-subtitle", "invalid-node-default-width",
+    "invalid-tier-id", "invalid-tier-label", "invalid-tier-x", "invalid-tier-y", "invalid-tier-width", "invalid-tier-height", "invalid-tier-color",
+    "invalid-legend-type", "invalid-legend-label", "invalid-legend-type",
+    "invalid-node-label", "invalid-node-type", "invalid-node-shape", "invalid-node-width", "invalid-node-height",
+    "missing-edge-source", "missing-edge-target", "invalid-edge-from", "invalid-edge-to",
+    "invalid-edge-label", "invalid-edge-dashed", "invalid-edge-from-anchor", "invalid-edge-to-anchor",
+  ]);
 });

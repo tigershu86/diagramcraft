@@ -1,4 +1,6 @@
 const DIAGRAM_KINDS = new Set(["architecture", "flowchart"]);
+const SHAPES = new Set(["rect", "terminal", "decision", "data", "subprocess", "database", "dashed-rect"]);
+const ANCHORS = new Set(["top", "right", "bottom", "left"]);
 
 const NODE_PRESETS = {
   terminal: { width: 140, height: 44, shape: "terminal" },
@@ -19,6 +21,16 @@ function issue(code, path, message) {
   return { code, path, message };
 }
 
+function positiveNumber(value) {
+  return Number.isFinite(value) && value > 0;
+}
+
+function optionalString(issues, value, code, path, message) {
+  if (value !== undefined && typeof value !== "string") {
+    issues.push(issue(code, path, message));
+  }
+}
+
 export function validateDiagram(diagram) {
   const issues = [];
 
@@ -35,6 +47,69 @@ export function validateDiagram(diagram) {
   if (!Number.isFinite(diagram.height) || diagram.height <= 0) {
     issues.push(issue("invalid-height", "height", "height must be a positive number"));
   }
+  if (typeof diagram.title !== "string") {
+    issues.push(issue("invalid-title", "title", "title must be a string"));
+  }
+  optionalString(issues, diagram.subtitle, "invalid-subtitle", "subtitle", "subtitle must be a string");
+  if (diagram.nodeDefaults !== undefined) {
+    if (!diagram.nodeDefaults || typeof diagram.nodeDefaults !== "object" || Array.isArray(diagram.nodeDefaults)) {
+      issues.push(issue("invalid-node-defaults", "nodeDefaults", "nodeDefaults must be an object"));
+    } else {
+      for (const dimension of ["width", "height"]) {
+        if (diagram.nodeDefaults[dimension] !== undefined && !positiveNumber(diagram.nodeDefaults[dimension])) {
+          issues.push(issue(`invalid-node-default-${dimension}`, `nodeDefaults.${dimension}`, `nodeDefaults ${dimension} must be a positive number`));
+        }
+      }
+      if (diagram.nodeDefaults.shape !== undefined && !SHAPES.has(diagram.nodeDefaults.shape)) {
+        issues.push(issue("invalid-node-default-shape", "nodeDefaults.shape", "nodeDefaults shape must be supported"));
+      }
+    }
+  }
+
+  const tiers = Array.isArray(diagram.tiers) ? diagram.tiers : [];
+  if (diagram.tiers !== undefined && !Array.isArray(diagram.tiers)) {
+    issues.push(issue("invalid-tiers", "tiers", "tiers must be an array"));
+  }
+  tiers.forEach((tier, index) => {
+    const tierPath = `tiers[${index}]`;
+    if (!tier || typeof tier !== "object" || Array.isArray(tier)) {
+      issues.push(issue("invalid-tier", tierPath, "tier must be an object"));
+      return;
+    }
+    optionalString(issues, tier.id, "invalid-tier-id", `${tierPath}.id`, "tier id must be a string");
+    if (typeof tier.label !== "string") issues.push(issue("invalid-tier-label", `${tierPath}.label`, "tier label must be a string"));
+    for (const field of ["x", "y"]) {
+      if (tier[field] !== undefined && !Number.isFinite(tier[field])) {
+        issues.push(issue(`invalid-tier-${field}`, `${tierPath}.${field}`, `tier ${field} must be a finite number`));
+      }
+    }
+    for (const field of ["width", "height"]) {
+      if (tier[field] !== undefined && !positiveNumber(tier[field])) {
+        issues.push(issue(`invalid-tier-${field}`, `${tierPath}.${field}`, `tier ${field} must be a positive number`));
+      }
+    }
+    optionalString(issues, tier.color, "invalid-tier-color", `${tierPath}.color`, "tier color must be a string");
+  });
+
+  const legend = Array.isArray(diagram.legend) ? diagram.legend : [];
+  if (diagram.legend !== undefined && !Array.isArray(diagram.legend)) {
+    issues.push(issue("invalid-legend", "legend", "legend must be an array"));
+  }
+  legend.forEach((item, index) => {
+    const legendPath = `legend[${index}]`;
+    if (typeof item === "string") {
+      if (!NODE_PRESETS[item] && !["client", "cdn", "lb", "security", "gateway", "service", "cache", "queue", "search", "external"].includes(item)) {
+        issues.push(issue("invalid-legend-type", legendPath, "legend type must be supported"));
+      }
+    } else if (item && typeof item === "object" && !Array.isArray(item)) {
+      if (typeof item.type !== "string" || (!NODE_PRESETS[item.type] && !["client", "cdn", "lb", "security", "gateway", "service", "cache", "queue", "search"].includes(item.type))) {
+        issues.push(issue("invalid-legend-type", `${legendPath}.type`, "legend type must be supported"));
+      }
+      if (typeof item.label !== "string") issues.push(issue("invalid-legend-label", `${legendPath}.label`, "legend label must be a string"));
+    } else {
+      issues.push(issue("invalid-legend-item", legendPath, "legend item must be a supported string or object"));
+    }
+  });
 
   const nodes = Array.isArray(diagram.nodes) ? diagram.nodes : [];
   if (!Array.isArray(diagram.nodes)) {
@@ -57,6 +132,14 @@ export function validateDiagram(diagram) {
     if (!Number.isFinite(node.x) || !Number.isFinite(node.y)) {
       issues.push(issue("invalid-node-position", nodePath, "node x and y must be finite numbers"));
     }
+    if (typeof node.label !== "string") issues.push(issue("invalid-node-label", `${nodePath}.label`, "node label must be a string"));
+    if (typeof node.type !== "string") issues.push(issue("invalid-node-type", `${nodePath}.type`, "node type must be a string"));
+    if (node.shape !== undefined && !SHAPES.has(node.shape)) issues.push(issue("invalid-node-shape", `${nodePath}.shape`, "node shape must be supported"));
+    for (const dimension of ["width", "height"]) {
+      if (node[dimension] !== undefined && !positiveNumber(node[dimension])) {
+        issues.push(issue(`invalid-node-${dimension}`, `${nodePath}.${dimension}`, `node ${dimension} must be a positive number`));
+      }
+    }
   });
 
   const edges = Array.isArray(diagram.edges) ? diagram.edges : [];
@@ -74,6 +157,17 @@ export function validateDiagram(diagram) {
     }
     if (!ids.has(edge.to)) {
       issues.push(issue("missing-edge-target", `${edgePath}.to`, `missing edge target: ${edge.to}`));
+    }
+    if (typeof edge.from !== "string") issues.push(issue("invalid-edge-from", `${edgePath}.from`, "edge source must be a string"));
+    if (typeof edge.to !== "string") issues.push(issue("invalid-edge-to", `${edgePath}.to`, "edge target must be a string"));
+    optionalString(issues, edge.label, "invalid-edge-label", `${edgePath}.label`, "edge label must be a string");
+    if (edge.dashed !== undefined && typeof edge.dashed !== "boolean") {
+      issues.push(issue("invalid-edge-dashed", `${edgePath}.dashed`, "edge dashed must be a boolean"));
+    }
+    for (const anchor of ["fromAnchor", "toAnchor"]) {
+      if (edge[anchor] !== undefined && !ANCHORS.has(edge[anchor])) {
+        issues.push(issue(`invalid-edge-${anchor.replace("Anchor", "-anchor").replace("from-", "from-").replace("to-", "to-")}`, `${edgePath}.${anchor}`, `${anchor} must be top, right, bottom, or left`));
+      }
     }
   });
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import App, { EXAMPLE_OPTIONS } from "../src/App.js";
+import App, { EXAMPLE_OPTIONS, tabIdForKey } from "../src/App.js";
 
 test("preview app exposes every example through an accessible tab list", () => {
   const html = renderToStaticMarkup(React.createElement(App));
@@ -15,4 +15,12 @@ test("preview app exposes every example through an accessible tab list", () => {
   assert.match(html, /E-Commerce Platform Architecture/);
   assert.match(html, /Shared schema/);
   assert.match(html, /3 examples/);
+});
+
+test("tabIdForKey wraps arrow navigation and supports Home and End", () => {
+  assert.equal(tabIdForKey("architecture", "ArrowLeft"), "flowchart");
+  assert.equal(tabIdForKey("flowchart", "ArrowRight"), "architecture");
+  assert.equal(tabIdForKey("hybrid", "Home"), "architecture");
+  assert.equal(tabIdForKey("hybrid", "End"), "flowchart");
+  assert.equal(tabIdForKey("hybrid", "Enter"), null);
 });
