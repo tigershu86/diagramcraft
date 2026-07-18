@@ -122,7 +122,7 @@ test("missing architecture placement keeps fixed nodes and rebuilds tier bounds"
     height: 400,
     tiers: [{ id: "top", label: "Top" }, { id: "bottom", label: "Bottom" }],
     nodes: [
-      { id: "fixed", label: "Fixed", type: "service", tier: "top", x: 700, y: 80 },
+      { id: "fixed", label: "Fixed", type: "service", tier: "top", x: 700, y: 52 },
       { id: "auto", label: "Auto", type: "database", tier: "bottom" },
     ],
     edges: [{ from: "fixed", to: "auto" }],
@@ -138,7 +138,7 @@ test("missing architecture placement keeps fixed nodes and rebuilds tier bounds"
     assert.ok(node.x >= tier.x && node.x + node.width <= tier.x + tier.width);
     assert.ok(node.y >= tier.y && node.y + node.height <= tier.y + tier.height);
   }
-  assert.ok(result.tiers[0].y < result.tiers[1].y);
+  assert.equal(nodeBoundsOverlap(result.tiers[0], result.tiers[1]), false);
   assertNoOverlap(result.nodes, 20);
 });
 
@@ -175,6 +175,10 @@ test("manual architecture without tier membership leaves absent tier geometry al
   };
 
   assert.deepEqual(layoutDiagram(input).tiers, input.tiers);
+  assert.throws(
+    () => prepareDiagram(input),
+    /layout-tier-y[\s\S]*unused[\s\S]*layout-tier-height[\s\S]*unused/,
+  );
 });
 
 test("manual architecture fills only missing tier geometry fields", () => {
@@ -217,7 +221,7 @@ test("omitted canvas dimensions include final and trailing-empty tier bounds", (
 
   const result = layoutDiagram(input);
   const tail = result.tiers[1];
-  assert.ok(result.width >= result.tiers[0].x + result.tiers[0].width);
+  assert.equal(result.width, result.tiers[0].x + result.tiers[0].width + 24);
   assert.ok(result.height >= tail.y + tail.height + 24);
   assert.equal(result.tiers[0].width, input.tiers[0].width);
   assert.equal(result.tiers[0].height, input.tiers[0].height);
@@ -247,6 +251,64 @@ test("manual cyclic flow classifies feedback without moving fixed nodes", () => 
   assert.ok(result.edges[2].gutterX > maxRight);
   assert.ok(result.width > result.edges[2].gutterX);
   assert.equal(result.height, input.height);
+});
+
+test("prepareDiagram aggregates conflicting architecture tier diagnostics", () => {
+  const input = {
+    kind: "architecture",
+    title: "Conflicting manual tiers",
+    width: 800,
+    height: 500,
+    tiers: [
+      { id: "top", label: "Top", x: 12, y: 24, width: 776, height: 200 },
+      { id: "bottom", label: "Bottom", x: 12, y: 150, width: 776, height: 200 },
+    ],
+    nodes: [
+      { id: "outside", label: "Outside", type: "service", tier: "top", x: 100, y: 300 },
+      { id: "inside", label: "Inside", type: "database", tier: "bottom", x: 400, y: 170 },
+    ],
+    edges: [{ from: "outside", to: "inside" }],
+  };
+
+  assert.throws(
+    () => prepareDiagram(input),
+    /layout-tier-overlap[\s\S]*top, bottom[\s\S]*layout-node-outside-tier[\s\S]*outside, top/,
+  );
+});
+
+test("prepareDiagram rejects a non-positive effective tier width", () => {
+  const input = {
+    kind: "architecture",
+    title: "Narrow tier canvas",
+    width: 20,
+    height: 100,
+    tiers: [{ id: "narrow", label: "Narrow", y: 10, height: 40 }],
+    nodes: [],
+    edges: [],
+  };
+
+  assert.throws(() => prepareDiagram(input), /layout-tier-width[\s\S]*narrow/);
+});
+
+test("mixed placement jumps over an extremely wide fixed reservation", () => {
+  const input = {
+    kind: "flowchart",
+    title: "Wide reservation",
+    nodes: [
+      { id: "fixed", label: "Fixed", type: "process", width: 1e12, x: 0, y: 148 },
+      { id: "auto", label: "Auto", type: "process" },
+    ],
+    edges: [{ from: "fixed", to: "auto" }],
+  };
+  const ideal = layoutDiagram(input, { mode: "force" });
+  const idealX = ideal.nodes.find(({ id }) => id === "auto").x;
+  const firstRightCandidate = idealX + Math.ceil((1e12 + 20 - idealX) / 20) * 20;
+
+  const result = layoutDiagram(input);
+  const auto = result.nodes.find(({ id }) => id === "auto");
+  assert.equal(auto.x, firstRightCandidate);
+  assert.ok(Number.isFinite(auto.x) && Number.isFinite(auto.y));
+  assert.equal(nodeBoundsOverlap(result.nodes[0], auto, 20), false);
 });
 
 test("force placement ignores old coordinates and tightly fits its result", () => {

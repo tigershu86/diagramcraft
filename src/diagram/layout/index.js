@@ -23,18 +23,59 @@ function contentSize(nodes) {
   };
 }
 
-function collides(candidate, placed) {
-  return placed.some((node) => nodeBoundsOverlap(candidate, node, ARCHITECTURE_LAYOUT.NODE_GAP));
+function blockedOffsetIntervals(node, placed, step) {
+  const gap = ARCHITECTURE_LAYOUT.NODE_GAP;
+  const minimumOffset = Math.ceil(-node.x / step);
+  const intervals = placed.flatMap((reservation) => {
+    const verticallyBlocked = node.y < reservation.y + reservation.height + gap
+      && node.y + node.height + gap > reservation.y;
+    if (!verticallyBlocked) return [];
+    const lower = Math.max(
+      minimumOffset,
+      Math.floor((reservation.x - node.width - gap - node.x) / step) + 1,
+    );
+    const upper = Math.ceil((reservation.x + reservation.width + gap - node.x) / step) - 1;
+    return lower <= upper ? [[lower, upper]] : [];
+  }).sort((left, right) => left[0] - right[0] || left[1] - right[1]);
+
+  return intervals.reduce((merged, interval) => {
+    const previous = merged.at(-1);
+    if (previous && interval[0] <= previous[1] + 1) previous[1] = Math.max(previous[1], interval[1]);
+    else merged.push([...interval]);
+    return merged;
+  }, []);
+}
+
+function nearestOpenOffset(intervals, minimumOffset) {
+  let right = Math.max(0, minimumOffset);
+  for (const [lower, upper] of intervals) {
+    if (upper < right) continue;
+    if (lower > right) break;
+    right = upper + 1;
+  }
+
+  let left = minimumOffset <= -1 ? -1 : null;
+  if (left !== null) {
+    for (let index = intervals.length - 1; index >= 0; index -= 1) {
+      const [lower, upper] = intervals[index];
+      if (lower > left) continue;
+      if (upper < left) break;
+      left = lower - 1;
+      if (left < minimumOffset) {
+        left = null;
+        break;
+      }
+    }
+  }
+  return left === null || right <= Math.abs(left) ? right : left;
 }
 
 function reserveHorizontalPosition(node, placed) {
   const step = ARCHITECTURE_LAYOUT.NODE_GAP;
-  for (let offsetIndex = 0; ; offsetIndex += 1) {
-    const magnitude = Math.ceil(offsetIndex / 2) * step;
-    const offset = offsetIndex === 0 ? 0 : offsetIndex % 2 === 1 ? magnitude : -magnitude;
-    const candidate = { ...node, x: node.x + offset };
-    if (candidate.x >= 0 && !collides(candidate, placed)) return candidate;
-  }
+  const minimumOffset = Math.ceil(-node.x / step);
+  const intervals = blockedOffsetIntervals(node, placed, step);
+  const offset = nearestOpenOffset(intervals, minimumOffset);
+  return { ...node, x: node.x + offset * step };
 }
 
 function fitFeedback(edges, nodes, width) {
@@ -87,7 +128,9 @@ function fillTierGeometry(tiers, candidates) {
 
 function canvasSize(input, nodeSize, tiers) {
   const tierRight = Math.max(0, ...tiers.map((tier) => (
-    Number.isFinite(tier.x) && Number.isFinite(tier.width) ? tier.x + tier.width : 0
+    Number.isFinite(tier.x) && Number.isFinite(tier.width)
+      ? tier.x + tier.width + CANVAS_PADDING
+      : 0
   )));
   const tierBottom = Math.max(0, ...tiers.map((tier) => (
     Number.isFinite(tier.y) && Number.isFinite(tier.height)
@@ -116,18 +159,8 @@ function fittedManualTiers(normalized, input, nodeSize) {
     initialWidth,
     { preserveSequenceGeometry: true },
   );
-  let tiers = fillTierGeometry(normalized.tiers, initialCandidates);
-  let size = canvasSize(input, nodeSize, tiers);
-  if (input.width === undefined && size.width !== initialWidth) {
-    const finalCandidates = tierRectangles(
-      normalized.tiers,
-      normalized.nodes,
-      size.width,
-      { preserveSequenceGeometry: true },
-    );
-    tiers = fillTierGeometry(normalized.tiers, finalCandidates);
-    size = canvasSize(input, nodeSize, tiers);
-  }
+  const tiers = fillTierGeometry(normalized.tiers, initialCandidates);
+  const size = canvasSize(input, nodeSize, tiers);
   return { tiers, size };
 }
 
@@ -192,9 +225,105 @@ export function layoutDiagram(input, { mode = "missing" } = {}) {
   return mixedLayout(normalized, input, ideal);
 }
 
+function effectiveTiers(diagram) {
+  return diagram.tiers.map((tier) => ({
+    ...tier,
+    x: tier.x ?? 12,
+    width: tier.width ?? diagram.width - 24,
+  }));
+}
+
+function validatePreparedTiers(diagram) {
+  const issues = [];
+  const tiers = effectiveTiers(diagram);
+  const validRectangles = new Map();
+  tiers.forEach((tier) => {
+    const validX = Number.isFinite(tier.x);
+    const validWidth = Number.isFinite(tier.width) && tier.width > 0;
+    const validY = Number.isFinite(tier.y);
+    const validHeight = Number.isFinite(tier.height) && tier.height > 0;
+    if (!validX) {
+      issues.push({
+        code: "layout-tier-x",
+        nodeIds: [tier.id],
+        message: `Tier ${tier.id} x must be finite before rendering`,
+      });
+    }
+    if (!validWidth) {
+      issues.push({
+        code: "layout-tier-width",
+        nodeIds: [tier.id],
+        message: `Tier ${tier.id} width must be positive before rendering`,
+      });
+    }
+    if (!validY) {
+      issues.push({
+        code: "layout-tier-y",
+        nodeIds: [tier.id],
+        message: `Tier ${tier.id} y must be finite before rendering`,
+      });
+    }
+    if (!validHeight) {
+      issues.push({
+        code: "layout-tier-height",
+        nodeIds: [tier.id],
+        message: `Tier ${tier.id} height must be positive before rendering`,
+      });
+    }
+    if (!validX || !validWidth || !validY || !validHeight) return;
+    validRectangles.set(tier.id, tier);
+    if (tier.x < 0
+      || tier.y < 0
+      || tier.x + tier.width > diagram.width
+      || tier.y + tier.height > diagram.height) {
+      issues.push({
+        code: "layout-tier-out-of-bounds",
+        nodeIds: [tier.id],
+        message: `Tier ${tier.id} exceeds the canvas bounds`,
+      });
+    }
+  });
+
+  for (let first = 0; first < tiers.length; first += 1) {
+    const firstTier = validRectangles.get(tiers[first].id);
+    if (!firstTier) continue;
+    for (let second = first + 1; second < tiers.length; second += 1) {
+      const secondTier = validRectangles.get(tiers[second].id);
+      if (secondTier && nodeBoundsOverlap(firstTier, secondTier)) {
+        issues.push({
+          code: "layout-tier-overlap",
+          nodeIds: [firstTier.id, secondTier.id],
+          message: `Tiers ${firstTier.id} and ${secondTier.id} overlap`,
+        });
+      }
+    }
+  }
+
+  diagram.nodes.forEach((node) => {
+    if (node.tier === undefined) return;
+    const tier = validRectangles.get(node.tier);
+    if (!tier) return;
+    const contained = node.x >= tier.x
+      && node.y >= tier.y
+      && node.x + node.width <= tier.x + tier.width
+      && node.y + node.height <= tier.y + tier.height;
+    if (!contained) {
+      issues.push({
+        code: "layout-node-outside-tier",
+        nodeIds: [node.id, tier.id],
+        message: `Node ${node.id} is not fully contained by tier ${tier.id}`,
+      });
+    }
+  });
+  return issues;
+}
+
 export function prepareDiagram(input, { layout = "missing" } = {}) {
   const result = layoutDiagram(input, { mode: layout });
-  const issues = validateLayout(result, { padding: 0, gap: 0 });
+  const issues = [
+    ...validateLayout(result, { padding: 0, gap: 0 }),
+    ...validatePreparedTiers(result),
+  ];
   if (issues.length > 0) {
     const details = issues.map(({ code, nodeIds, message }) => {
       const mappedCode = code.startsWith("layout-") ? code : `layout-${code}`;
