@@ -4,6 +4,7 @@ import {
   DIAGRAM_KINDS,
   hasOwnPosition,
   hasPartialPosition,
+  NODE_DEFAULT_FIELDS,
   NODE_PRESETS,
   NODE_SHAPES,
   NODE_TYPES,
@@ -13,7 +14,7 @@ const kinds = new Set(DIAGRAM_KINDS);
 const anchors = new Set(ANCHORS);
 const shapes = new Set(NODE_SHAPES);
 const nodeTypes = new Set(NODE_TYPES);
-const NODE_DEFAULT_FIELDS = ["width", "height", "shape", "sublabel"];
+const nodeDefaultFields = new Set(NODE_DEFAULT_FIELDS);
 
 function issue(code, path, message) {
   return { code, path, message };
@@ -56,6 +57,11 @@ export function validateDiagram(diagram, options = {}) {
     if (!diagram.nodeDefaults || typeof diagram.nodeDefaults !== "object" || Array.isArray(diagram.nodeDefaults)) {
       issues.push(issue("invalid-node-defaults", "nodeDefaults", "nodeDefaults must be an object"));
     } else {
+      Object.getOwnPropertyNames(diagram.nodeDefaults).forEach((field) => {
+        if (!nodeDefaultFields.has(field)) {
+          issues.push(issue("invalid-node-default-field", `nodeDefaults.${field}`, `nodeDefaults ${field} is not supported`));
+        }
+      });
       for (const dimension of ["width", "height"]) {
         if (diagram.nodeDefaults[dimension] !== undefined && !positiveNumber(diagram.nodeDefaults[dimension])) {
           issues.push(issue(`invalid-node-default-${dimension}`, `nodeDefaults.${dimension}`, `nodeDefaults ${dimension} must be a positive number`));
@@ -190,35 +196,43 @@ export function validateDiagram(diagram, options = {}) {
 
 export function validatePreparedDiagram(diagram, options = {}) {
   const issues = validateDiagram(diagram, options);
-  if (!diagram || typeof diagram !== "object" || Array.isArray(diagram)) return issues;
+  if (issues.length > 0) return issues;
+  const normalized = normalizeValidatedDiagram(diagram);
 
-  if (!positiveNumber(diagram.width)) issues.push(issue("unprepared-width", "width", "width must be a positive number before rendering"));
-  if (!positiveNumber(diagram.height)) issues.push(issue("unprepared-height", "height", "height must be a positive number before rendering"));
-  if (Array.isArray(diagram.tiers)) {
-    diagram.tiers.forEach((tier, index) => {
+  if (!positiveNumber(normalized.width)) issues.push(issue("unprepared-width", "width", "width must be a positive number before rendering"));
+  if (!positiveNumber(normalized.height)) issues.push(issue("unprepared-height", "height", "height must be a positive number before rendering"));
+  normalized.tiers.forEach((tier, index) => {
       if (!tier || typeof tier !== "object" || Array.isArray(tier)) return;
       if (!Number.isFinite(tier.y)) issues.push(issue("unprepared-tier-y", `tiers[${index}].y`, "tier y must be finite before rendering"));
       if (!positiveNumber(tier.height)) issues.push(issue("unprepared-tier-height", `tiers[${index}].height`, "tier height must be positive before rendering"));
-    });
-  }
-  if (Array.isArray(diagram.nodes)) {
-    diagram.nodes.forEach((node, index) => {
-      if (!node || typeof node !== "object" || Array.isArray(node)) return;
-      if (!Number.isFinite(node.x) || !Number.isFinite(node.y)) {
-        issues.push(issue("unprepared-node-position", `nodes[${index}]`, "node x and y must be finite before rendering"));
+  });
+  normalized.nodes.forEach((node, index) => {
+    if (!Number.isFinite(node.x) || !Number.isFinite(node.y)) {
+      issues.push(issue("unprepared-node-position", `nodes[${index}]`, "node x and y must be finite before rendering"));
+    }
+    for (const dimension of ["width", "height"]) {
+      if (!positiveNumber(node[dimension])) {
+        issues.push(issue(`unprepared-node-${dimension}`, `nodes[${index}].${dimension}`, `node ${dimension} must be positive before rendering`));
       }
-    });
-  }
+    }
+    if (!shapes.has(node.shape)) {
+      issues.push(issue("unprepared-node-shape", `nodes[${index}].shape`, "node shape must be supported before rendering"));
+    }
+  });
   return issues;
 }
 
 function assertWith(validator, diagram, options) {
   const issues = validator(diagram, options);
+  throwForIssues(issues);
+  return diagram;
+}
+
+function throwForIssues(issues) {
   if (issues.length > 0) {
     const details = issues.map(({ code, path, message }) => `${code} at ${path}: ${message}`).join("\n");
     throw new TypeError(`Invalid diagram:\n${details}`);
   }
-  return diagram;
 }
 
 export function assertDiagram(diagram, options = {}) {
@@ -226,11 +240,16 @@ export function assertDiagram(diagram, options = {}) {
 }
 
 export function assertPreparedDiagram(diagram, options = {}) {
-  return assertWith(validatePreparedDiagram, diagram, options);
+  const issues = validatePreparedDiagram(diagram, options);
+  throwForIssues(issues);
+  return normalizeValidatedDiagram(diagram);
 }
 
-export function normalizeDiagram(diagram, options = {}) {
-  assertDiagram(diagram, options);
+function definedEntries(value) {
+  return Object.entries(value).filter(([, entry]) => entry !== undefined);
+}
+
+function normalizeValidatedDiagram(diagram) {
   const nodeDefaults = Object.fromEntries(
     NODE_DEFAULT_FIELDS
       .filter((field) => diagram.nodeDefaults?.[field] !== undefined)
@@ -247,7 +266,7 @@ export function normalizeDiagram(diagram, options = {}) {
         sublabel: "",
         ...preset,
         ...nodeDefaults,
-        ...node,
+        ...Object.fromEntries(definedEntries(node)),
       };
     }),
     edges: diagram.edges.map((edge) => ({
@@ -256,4 +275,9 @@ export function normalizeDiagram(diagram, options = {}) {
       ...edge,
     })),
   };
+}
+
+export function normalizeDiagram(diagram, options = {}) {
+  assertDiagram(diagram, options);
+  return normalizeValidatedDiagram(diagram);
 }

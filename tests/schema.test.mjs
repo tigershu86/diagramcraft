@@ -2,13 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  assertPreparedDiagram,
   assertDiagram,
   normalizeDiagram,
   validateDiagram,
+  validatePreparedDiagram,
 } from "../src/diagram/schema.js";
 import {
   ANCHORS,
   DIAGRAM_KINDS,
+  NODE_DEFAULT_FIELDS,
   NODE_SHAPES,
   NODE_TYPES,
 } from "../src/diagram/contract.js";
@@ -24,6 +27,14 @@ const validDiagram = {
   ],
   edges: [{ from: "start", to: "auth", label: "submit" }],
 };
+
+function deepFreeze(value) {
+  if (value && typeof value === "object") {
+    Object.values(value).forEach(deepFreeze);
+    Object.freeze(value);
+  }
+  return value;
+}
 
 test("normalizeDiagram applies canonical node sizes and edge defaults", () => {
   const normalized = normalizeDiagram({
@@ -103,10 +114,12 @@ test("contract exports are frozen and cover supported node rendering values", ()
   assert.equal(Object.isFrozen(ANCHORS), true);
   assert.equal(Object.isFrozen(NODE_SHAPES), true);
   assert.equal(Object.isFrozen(NODE_TYPES), true);
+  assert.equal(Object.isFrozen(NODE_DEFAULT_FIELDS), true);
   assert.deepEqual(NODE_TYPES, [
     "client", "cdn", "lb", "security", "gateway", "service", "cache", "database", "queue", "search", "external",
     "terminal", "process", "decision", "data", "sub", "state", "highlight", "error",
   ]);
+  assert.deepEqual(NODE_DEFAULT_FIELDS, ["width", "height", "shape", "sublabel"]);
 });
 
 test("validateDiagram rejects unsupported centralized node type, shape, and anchor", () => {
@@ -139,24 +152,86 @@ test("normalizeDiagram applies presets without inventing omitted coordinates", (
   });
 });
 
-test("normalizeDiagram never applies coordinates from node defaults", () => {
+test("normalizeDiagram rejects coordinates in node defaults", () => {
+  assert.throws(
+    () => normalizeDiagram({
+      kind: "flowchart",
+      title: "Coordinate-free defaults",
+      nodeDefaults: { x: 10, y: 20, width: 190 },
+      nodes: [{ id: "start", label: "Start", type: "terminal" }],
+      edges: [],
+    }),
+    /invalid-node-default-field[\s\S]*nodeDefaults\.x/,
+  );
+});
+
+test("validateDiagram rejects unsupported node default fields", () => {
+  assert.deepEqual(
+    validateDiagram({
+      ...validDiagram,
+      nodeDefaults: { x: 10, y: 20, bogus: true },
+    }).map(({ code, path }) => ({ code, path })),
+    [
+      { code: "invalid-node-default-field", path: "nodeDefaults.x" },
+      { code: "invalid-node-default-field", path: "nodeDefaults.y" },
+      { code: "invalid-node-default-field", path: "nodeDefaults.bogus" },
+    ],
+  );
+});
+
+test("normalizeDiagram applies the supported default sublabel", () => {
   const normalized = normalizeDiagram({
+    ...validDiagram,
+    nodeDefaults: { sublabel: "Shared detail" },
+  });
+
+  assert.equal(normalized.nodes[0].sublabel, "Shared detail");
+});
+
+test("assertPreparedDiagram resolves undefined node fields without mutating frozen input", () => {
+  const raw = deepFreeze({
     kind: "flowchart",
-    title: "Coordinate-free defaults",
-    nodeDefaults: { x: 10, y: 20, width: 190 },
-    nodes: [{ id: "start", label: "Start", type: "terminal" }],
+    title: "Prepared flow",
+    width: 320,
+    height: 180,
+    nodes: [{
+      id: "start",
+      label: "Start",
+      type: "terminal",
+      x: 90,
+      y: 60,
+      width: undefined,
+      height: undefined,
+      shape: undefined,
+    }],
     edges: [],
   });
 
-  assert.deepEqual(normalized.nodes[0], {
-    id: "start",
-    label: "Start",
-    type: "terminal",
-    width: 190,
-    height: 44,
-    shape: "terminal",
-    sublabel: "",
-  });
+  assert.deepEqual(validatePreparedDiagram(raw), []);
+  const prepared = assertPreparedDiagram(raw);
+  assert.notEqual(prepared, raw);
+  assert.equal(prepared.nodes[0].width, 140);
+  assert.equal(prepared.nodes[0].height, 44);
+  assert.equal(prepared.nodes[0].shape, "terminal");
+  assert.equal(raw.nodes[0].width, undefined);
+  assert.equal(raw.nodes[0].height, undefined);
+  assert.equal(raw.nodes[0].shape, undefined);
+});
+
+test("validatePreparedDiagram returns structural issues without prepared duplicates", () => {
+  const raw = {
+    ...validDiagram,
+    title: "",
+    width: undefined,
+    height: undefined,
+    nodes: [validDiagram.nodes[0]],
+    edges: [],
+  };
+
+  assert.deepEqual(
+    validatePreparedDiagram(raw).map(({ code }) => code),
+    ["invalid-title"],
+  );
 });
 
 test("normalizeDiagram supports per-diagram node defaults without hiding node overrides", () => {

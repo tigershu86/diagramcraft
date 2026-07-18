@@ -5,6 +5,7 @@ export const NODE_TYPES = Object.freeze([
   "client", "cdn", "lb", "security", "gateway", "service", "cache", "database", "queue", "search", "external",
   "terminal", "process", "decision", "data", "sub", "state", "highlight", "error",
 ]);
+export const NODE_DEFAULT_FIELDS = Object.freeze(["width", "height", "shape", "sublabel"]);
 
 export const NODE_PRESETS = Object.freeze({
   terminal: Object.freeze({ width: 140, height: 44, shape: "terminal" }),

@@ -263,10 +263,7 @@ export function DiagramRenderer({
   showLegend = true,
   showHint = true,
 }) {
-  const diagram = useMemo(() => {
-    assertPreparedDiagram(input);
-    return normalizeDiagram(input);
-  }, [input]);
+  const diagram = useMemo(() => assertPreparedDiagram(input), [input]);
   const [hovered, setHovered] = useState(null);
   const [selected, setSelected] = useState(initialSelectedId);
   const reactId = useId().replace(/:/g, "");

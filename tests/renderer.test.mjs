@@ -51,7 +51,7 @@ test("DiagramRenderer rejects invalid graph data before rendering", () => {
   );
 });
 
-test("DiagramRenderer checks raw coordinate-free input before node defaults", () => {
+test("DiagramRenderer rejects raw coordinate-free input before normalization", () => {
   assert.throws(
     () => renderToStaticMarkup(React.createElement(DiagramRenderer, {
       diagram: {
@@ -59,13 +59,54 @@ test("DiagramRenderer checks raw coordinate-free input before node defaults", ()
         title: "Unprepared flow",
         width: 320,
         height: 180,
-        nodeDefaults: { x: 80, y: 40 },
         nodes: [{ id: "start", label: "Start", type: "terminal" }],
         edges: [],
       },
     })),
     /unprepared-node-position/,
   );
+});
+
+test("DiagramRenderer rejects coordinate node defaults before they can supply positions", () => {
+  assert.throws(
+    () => renderToStaticMarkup(React.createElement(DiagramRenderer, {
+      diagram: {
+        kind: "flowchart",
+        title: "Invalid defaults",
+        width: 320,
+        height: 180,
+        nodeDefaults: { x: 80, y: 40 },
+        nodes: [{ id: "start", label: "Start", type: "terminal" }],
+        edges: [],
+      },
+    })),
+    /invalid-node-default-field[\s\S]*nodeDefaults\.x/,
+  );
+});
+
+test("DiagramRenderer resolves explicit undefined node dimensions before rendering", () => {
+  const html = renderToStaticMarkup(React.createElement(DiagramRenderer, {
+    diagram: {
+      kind: "flowchart",
+      title: "Prepared defaults",
+      width: 320,
+      height: 180,
+      nodes: [{
+        id: "start",
+        label: "Start",
+        type: "terminal",
+        x: 90,
+        y: 60,
+        width: undefined,
+        height: undefined,
+        shape: undefined,
+      }],
+      edges: [],
+    },
+  }));
+
+  assert.match(html, /<rect x="90" y="60" width="140" height="44"/);
+  assert.doesNotMatch(html, /NaN|undefined/);
 });
 
 test("DiagramRenderer rejects non-string node sublabels before React renders them", () => {
