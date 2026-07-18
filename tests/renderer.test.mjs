@@ -30,8 +30,27 @@ test("DiagramRenderer emits an accessible SVG with data-driven nodes and edges",
   assert.match(html, /<desc[^>]*>Accessible renderer<\/desc>/);
   assert.match(html, /aria-label="Start"/);
   assert.match(html, /aria-label="Approved\?"/);
+  assert.match(html, /<g role="button" tabindex="0" aria-label="Start" aria-pressed="false"/);
+  assert.match(html, /cursor:pointer/);
+  assert.match(html, /transition:transform 180ms ease,\s*filter 180ms ease/);
   assert.match(html, /M 210 64 C/);
   assert.match(html, />review<\/text>/);
+});
+
+test("DiagramRenderer preserves optional preview output modes", () => {
+  const html = renderToStaticMarkup(React.createElement(DiagramRenderer, {
+    diagram,
+    showHeader: false,
+    showLegend: false,
+    showHint: false,
+  }));
+
+  assert.doesNotMatch(html, /<header/);
+  assert.doesNotMatch(html, /class="diagram-legend"/);
+  assert.doesNotMatch(html, /点击或按 Enter/);
+  assert.match(html, /<section class="diagram-renderer"/);
+  assert.match(html, /<svg[^>]+role="group"/);
+  assert.match(html, /<g role="button" tabindex="0"/);
 });
 
 test("DiagramRenderer ignores an initial selection missing from the current diagram", () => {

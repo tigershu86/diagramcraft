@@ -1,3 +1,5 @@
+export const FONT = "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+
 export const TOKENS = {
   canvas: "#FFFFFF",
   page: "#F1F5F9",
