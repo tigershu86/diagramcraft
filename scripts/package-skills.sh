@@ -14,8 +14,15 @@ command -v zip >/dev/null 2>&1 || {
 mkdir -p "${OUTPUT_DIR}"
 
 for skill in arch-diagram flowchart; do
+  STAGING_ROOT="${PACKAGE_TMP}/staging-${skill}"
+  STAGED_SKILL="${STAGING_ROOT}/${skill}"
+  mkdir -p "${STAGED_SKILL}/references"
+  cp -R "${PROJECT_ROOT}/${skill}/." "${STAGED_SKILL}/"
+  cp "${PROJECT_ROOT}/schema/diagram.schema.json" \
+    "${STAGED_SKILL}/references/diagram.schema.json"
+
   (
-    cd "${PROJECT_ROOT}"
+    cd "${STAGING_ROOT}"
     zip -qr "${PACKAGE_TMP}/${skill}.skill" "${skill}" -x "*/.DS_Store"
   )
   cp "${PACKAGE_TMP}/${skill}.skill" "${OUTPUT_DIR}/${skill}.skill"

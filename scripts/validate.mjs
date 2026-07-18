@@ -84,6 +84,7 @@ for (const skill of SKILLS) {
 const archSkill = read("arch-diagram/SKILL.md");
 const flowSkill = read("flowchart/SKILL.md");
 const readme = read("README.md");
+const diagramSchema = JSON.parse(read("schema/diagram.schema.json"));
 const packageJson = JSON.parse(read("package.json"));
 const architectureArtifacts = [
   ["README.md", readme],
@@ -99,6 +100,12 @@ check(archSkill.includes("Use flowchart for processes"),
   "arch-diagram/SKILL.md: description must defer process diagrams to flowchart");
 check(flowSkill.includes("不要用于云架构"),
   "flowchart/SKILL.md: description must defer architecture diagrams to arch-diagram");
+check(diagramSchema.$schema === "https://json-schema.org/draft/2020-12/schema",
+  "schema/diagram.schema.json: must declare JSON Schema Draft 2020-12");
+check(archSkill.includes("references/diagram.schema.json"),
+  "arch-diagram/SKILL.md: must reference the packaged diagram schema");
+check(flowSkill.includes("references/diagram.schema.json"),
+  "flowchart/SKILL.md: must reference the packaged diagram schema");
 check(!archSkill.includes("`Q` cubic"), "arch-diagram/SKILL.md: quadratic/cubic wording regressed");
 check(archSkill.includes(" C ${c1x} ${c1y} ${c2x} ${c2y}"),
   "arch-diagram/SKILL.md: cubic Bézier template is missing");

@@ -23,6 +23,7 @@ const examples = [
   ["examples/arch-flowchart-style.jsx", ARCH_FLOWCHART_STYLE, 22],
   ["examples/flowchart-login.jsx", LOGIN_FLOW, 10],
 ];
+const architectureExamples = [ARCH_ECOMMERCE, ARCH_FLOWCHART_STYLE];
 
 test("all example diagrams satisfy the shared schema and render", () => {
   for (const [, diagram, expectedNodes] of examples) {
@@ -42,5 +43,18 @@ test("example entry points are thin wrappers around the shared renderer", () => 
     assert.match(source, /DiagramRenderer/);
     assert.match(source, /from "\.\/diagrams\.js"/);
     assert.ok(source.split(/\r?\n/).length <= 12, `${relativePath} duplicated renderer code`);
+  }
+});
+
+test("architecture examples use declared tiers and support forced layout", () => {
+  for (const diagram of architectureExamples) {
+    const tierIds = new Set(diagram.tiers.map((tier) => tier.id));
+    assert.ok(
+      diagram.nodes.every((node) => tierIds.has(node.tier)),
+      `${diagram.title} contains a node outside its declared tiers`,
+    );
+
+    const prepared = prepareDiagram(diagram, { layout: "force" });
+    assert.deepEqual(validateLayout(prepared, { padding: 0, gap: 0 }), []);
   }
 });

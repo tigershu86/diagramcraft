@@ -7,6 +7,8 @@ description: Generate SVG diagrams for software/cloud architecture, infrastructu
 
 Produce **interactive, publication-quality system architecture diagrams** as React JSX artifacts, rendered with SVG, following the ByteByteGo visual language.
 
+When producing shared-contract diagram data for a Diagramcraft renderer, machine consumers must validate the data against the packaged `references/diagram.schema.json` before rendering it. The standalone JSX workflow below remains available when no shared renderer is present.
+
 ---
 
 ## Step 1 — Understand the Architecture

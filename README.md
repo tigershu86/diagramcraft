@@ -64,6 +64,33 @@ See the [`examples/`](./examples) directory for data-driven React entry points:
 
 All three examples import the same `DiagramRenderer`; their graph data lives in `examples/diagrams.js`. This makes schema, routing, interaction, accessibility, and visual-token fixes apply to every example at once.
 
+## Automatic layout and export
+
+Architecture data can omit coordinates entirely. For example, this Checkout diagram declares tiers and relationships while leaving placement to the shared runtime:
+
+```js
+const checkout = {
+  kind: "architecture",
+  title: "Checkout",
+  tiers: [
+    { id: "client", label: "CLIENT" },
+    { id: "service", label: "SERVICES" },
+    { id: "data", label: "DATA" },
+  ],
+  nodes: [
+    { id: "storefront", label: "Storefront", type: "client", tier: "client" },
+    { id: "checkout", label: "Checkout API", type: "gateway", tier: "service" },
+    { id: "orders", label: "Orders DB", type: "database", tier: "data" },
+  ],
+  edges: [
+    { from: "storefront", to: "checkout", label: "HTTPS" },
+    { from: "checkout", to: "orders", label: "SQL" },
+  ],
+};
+```
+
+Provide `x` and `y` together to preserve a node's manual position; nodes without that pair are laid out automatically. In the preview, **Force layout** rearranges the whole diagram and **Restore manual** returns to the original geometry. The same prepared diagram can be downloaded as standalone SVG or 2× PNG. Machine consumers can validate data against the [Draft 2020-12 diagram schema](./schema/diagram.schema.json) before rendering.
+
 ## Development
 
 Install dependencies and open the interactive preview:
