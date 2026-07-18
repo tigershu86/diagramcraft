@@ -51,6 +51,36 @@ test("DiagramRenderer rejects invalid graph data before rendering", () => {
   );
 });
 
+test("DiagramRenderer rejects non-string node sublabels before React renders them", () => {
+  assert.throws(
+    () => renderToStaticMarkup(React.createElement(DiagramRenderer, {
+      diagram: { ...diagram, nodes: [{ ...diagram.nodes[0], sublabel: { detail: "unsafe" } }, diagram.nodes[1]] },
+    })),
+    /invalid-node-sublabel/,
+  );
+  assert.throws(
+    () => renderToStaticMarkup(React.createElement(DiagramRenderer, {
+      diagram: { ...diagram, nodeDefaults: { sublabel: { detail: "unsafe" } } },
+    })),
+    /invalid-node-default-sublabel/,
+  );
+});
+
+test("DiagramRenderer rejects manual tiers missing required geometry before rendering", () => {
+  assert.throws(
+    () => renderToStaticMarkup(React.createElement(DiagramRenderer, {
+      diagram: { ...diagram, tiers: [{ label: "Missing y", height: 40 }] },
+    })),
+    /missing-tier-y/,
+  );
+  assert.throws(
+    () => renderToStaticMarkup(React.createElement(DiagramRenderer, {
+      diagram: { ...diagram, tiers: [{ label: "Missing height", y: 0 }] },
+    })),
+    /missing-tier-height/,
+  );
+});
+
 test("DiagramRenderer lifts labels above adjacent nodes on short horizontal edges", () => {
   const html = renderToStaticMarkup(React.createElement(DiagramRenderer, {
     diagram: {

@@ -63,6 +63,7 @@ export function validateDiagram(diagram) {
       if (diagram.nodeDefaults.shape !== undefined && !SHAPES.has(diagram.nodeDefaults.shape)) {
         issues.push(issue("invalid-node-default-shape", "nodeDefaults.shape", "nodeDefaults shape must be supported"));
       }
+      optionalString(issues, diagram.nodeDefaults.sublabel, "invalid-node-default-sublabel", "nodeDefaults.sublabel", "nodeDefaults sublabel must be a string");
     }
   }
 
@@ -78,6 +79,8 @@ export function validateDiagram(diagram) {
     }
     optionalString(issues, tier.id, "invalid-tier-id", `${tierPath}.id`, "tier id must be a string");
     if (typeof tier.label !== "string") issues.push(issue("invalid-tier-label", `${tierPath}.label`, "tier label must be a string"));
+    if (tier.y === undefined) issues.push(issue("missing-tier-y", `${tierPath}.y`, "tier y is required"));
+    if (tier.height === undefined) issues.push(issue("missing-tier-height", `${tierPath}.height`, "tier height is required"));
     for (const field of ["x", "y"]) {
       if (tier[field] !== undefined && !Number.isFinite(tier[field])) {
         issues.push(issue(`invalid-tier-${field}`, `${tierPath}.${field}`, `tier ${field} must be a finite number`));
@@ -134,6 +137,7 @@ export function validateDiagram(diagram) {
     }
     if (typeof node.label !== "string") issues.push(issue("invalid-node-label", `${nodePath}.label`, "node label must be a string"));
     if (typeof node.type !== "string") issues.push(issue("invalid-node-type", `${nodePath}.type`, "node type must be a string"));
+    optionalString(issues, node.sublabel, "invalid-node-sublabel", `${nodePath}.sublabel`, "node sublabel must be a string");
     if (node.shape !== undefined && !SHAPES.has(node.shape)) issues.push(issue("invalid-node-shape", `${nodePath}.shape`, "node shape must be supported"));
     for (const dimension of ["width", "height"]) {
       if (node[dimension] !== undefined && !positiveNumber(node[dimension])) {
