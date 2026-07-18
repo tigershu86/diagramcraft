@@ -298,3 +298,118 @@ test("style snapshot failures become stable invalid-node-style diagnostics", () 
     assert.throws(() => renderDiagramSvg(diagram), /invalid-node-style[\s\S]*nodes\[0\]\.style/);
   }
 });
+
+test("preparation snapshots a stateful tier color exactly once before validation and rendering", () => {
+  for (const laterColor of ["url(#escaped-tier)", 42]) {
+    let colorReads = 0;
+    const tier = new Proxy({ ...baseDiagram.tiers[0], color: "#abc" }, {
+      get(target, key, receiver) {
+        if (key !== "color") return Reflect.get(target, key, receiver);
+        colorReads += 1;
+        return colorReads === 1 ? "#abc" : laterColor;
+      },
+    });
+    const input = { ...baseDiagram, tiers: [tier] };
+
+    const prepared = prepareDiagram(input);
+    assert.equal(colorReads, 1);
+    assert.notEqual(prepared.tiers[0], tier);
+    assert.equal(Object.getPrototypeOf(prepared.tiers[0]), Object.prototype);
+    assert.equal(prepared.tiers[0].color, "#abc");
+    const preview = renderToStaticMarkup(React.createElement(DiagramRenderer, { diagram: prepared }));
+    const exported = renderDiagramSvg(prepared);
+    assert.equal(colorReads, 1);
+    assert.match(preview, /fill="#abc"/);
+    assert.match(exported, /fill="#abc"/);
+    assert.doesNotMatch(preview, /escaped-tier|fill="42"/);
+    assert.doesNotMatch(exported, /escaped-tier|fill="42"/);
+  }
+});
+
+test("prepared tiers and their array are isolated from caller mutation", () => {
+  const tier = { ...baseDiagram.tiers[0], color: "#abc" };
+  const tiers = [tier];
+  const prepared = prepareDiagram({ ...baseDiagram, tiers });
+  const expectedTier = { ...prepared.tiers[0] };
+
+  tier.id = "mutated";
+  tier.label = "Mutated";
+  tier.x = 999;
+  tier.y = 999;
+  tier.width = 1;
+  tier.height = 1;
+  tier.color = "url(#late-tier-mutation)";
+  tiers.push({ id: "late", label: "Late" });
+
+  assert.notEqual(prepared.tiers, tiers);
+  assert.deepEqual(prepared.tiers, [expectedTier]);
+  const exported = renderDiagramSvg(prepared);
+  assert.doesNotMatch(exported, /late-tier-mutation|Mutated|>Late</);
+  assert.match(exported, /fill="#abc"/);
+});
+
+test("tier snapshots accept plain realms and reject exotic or hostile records", () => {
+  const crossRealmTier = runInNewContext(`(${JSON.stringify({ ...baseDiagram.tiers[0], color: "#abc" })})`);
+  const nullPrototypeTier = Object.assign(Object.create(null), baseDiagram.tiers[0], { color: "#abc" });
+  for (const tier of [crossRealmTier, nullPrototypeTier]) {
+    const diagram = { ...baseDiagram, tiers: [tier] };
+    assert.equal(validateJson(diagram), true, JSON.stringify(validateJson.errors));
+    assert.deepEqual(validateDiagram(diagram), []);
+    assert.doesNotThrow(() => prepareDiagram(diagram));
+    assert.doesNotThrow(() => renderToStaticMarkup(React.createElement(DiagramRenderer, { diagram })));
+    assert.doesNotThrow(() => renderDiagramSvg(diagram));
+  }
+
+  class TierInstance {
+    constructor() {
+      Object.assign(this, baseDiagram.tiers[0], { color: "#abc" });
+    }
+  }
+  const throwing = (trap) => new Proxy({ ...baseDiagram.tiers[0], color: "#abc" }, {
+    [trap]() { throw new Error(`hostile tier ${trap}`); },
+  });
+  const unstableDescriptor = new Proxy({ ...baseDiagram.tiers[0], color: "#abc" }, {
+    ownKeys() { return ["id", "label", "x", "y", "width", "height", "color"]; },
+    getOwnPropertyDescriptor() { return undefined; },
+  });
+  const duplicateKeys = new Proxy({ ...baseDiagram.tiers[0], color: "#abc" }, {
+    ownKeys() { return ["id", "id"]; },
+  });
+  const symbolTier = { ...baseDiagram.tiers[0], color: "#abc", [Symbol("hidden")]: "url(#escaped)" };
+  const { proxy: revokedTier, revoke } = Proxy.revocable({ ...baseDiagram.tiers[0], color: "#abc" }, {});
+  revoke();
+  const hostileTiers = [
+    null,
+    [],
+    new Date(),
+    new Map(),
+    new TierInstance(),
+    revokedTier,
+    throwing("ownKeys"),
+    throwing("getOwnPropertyDescriptor"),
+    throwing("get"),
+    unstableDescriptor,
+    duplicateKeys,
+    symbolTier,
+  ];
+
+  for (const tier of hostileTiers) {
+    const diagram = { ...baseDiagram, tiers: [tier] };
+    assert.throws(() => prepareDiagram(diagram), /invalid-tier at tiers\[0\]/);
+    assert.throws(
+      () => renderToStaticMarkup(React.createElement(DiagramRenderer, { diagram })),
+      /invalid-tier at tiers\[0\]/,
+    );
+    assert.throws(() => renderDiagramSvg(diagram), /invalid-tier at tiers\[0\]/);
+  }
+
+  const unknownTierField = {
+    ...baseDiagram,
+    tiers: [{ ...baseDiagram.tiers[0], color: "#abc", shadow: "red" }],
+  };
+  assert.deepEqual(validateDiagram(unknownTierField).filter(({ code }) => code === "unknown-tier-field"), [{
+    code: "unknown-tier-field",
+    path: "tiers[0].shadow",
+    message: "tier field shadow is not supported",
+  }]);
+});

@@ -57,22 +57,30 @@ function validateKnownFields(issues, value, allowedFields, code, path, descripti
   });
 }
 
-function snapshotDiagramStyles(diagram) {
-  if (!diagram || typeof diagram !== "object" || Array.isArray(diagram) || !Array.isArray(diagram.nodes)) {
+function snapshotDiagramRecords(diagram) {
+  if (!diagram || typeof diagram !== "object" || Array.isArray(diagram)) {
     return diagram;
   }
-  return {
-    ...diagram,
-    nodes: diagram.nodes.map((node) => {
-      if (!node || typeof node !== "object" || Array.isArray(node)) return node;
-      const snapshotNode = { ...node };
+  const snapshot = { ...diagram };
+  if (Array.isArray(snapshot.nodes)) {
+    snapshot.nodes = snapshot.nodes.map((node) => {
+      const nodeSnapshot = snapshotPlainRecord(node);
+      if (!nodeSnapshot.ok) return null;
+      const snapshotNode = nodeSnapshot.value;
       if (snapshotNode.style !== undefined) {
         const styleSnapshot = snapshotPlainRecord(snapshotNode.style);
         snapshotNode.style = styleSnapshot.ok ? styleSnapshot.value : null;
       }
       return snapshotNode;
-    }),
-  };
+    });
+  }
+  if (Array.isArray(snapshot.tiers)) {
+    snapshot.tiers = snapshot.tiers.map((tier) => {
+      const tierSnapshot = snapshotPlainRecord(tier);
+      return tierSnapshot.ok ? tierSnapshot.value : null;
+    });
+  }
+  return snapshot;
 }
 
 function validateDiagramSnapshot(diagram, options = {}) {
@@ -272,7 +280,7 @@ function validateDiagramSnapshot(diagram, options = {}) {
 }
 
 export function validateDiagram(diagram, options = {}) {
-  return validateDiagramSnapshot(snapshotDiagramStyles(diagram), options);
+  return validateDiagramSnapshot(snapshotDiagramRecords(diagram), options);
 }
 
 function validatePreparedDiagramSnapshot(diagram, options = {}) {
@@ -304,7 +312,7 @@ function validatePreparedDiagramSnapshot(diagram, options = {}) {
 }
 
 export function validatePreparedDiagram(diagram, options = {}) {
-  return validatePreparedDiagramSnapshot(snapshotDiagramStyles(diagram), options);
+  return validatePreparedDiagramSnapshot(snapshotDiagramRecords(diagram), options);
 }
 
 function assertWith(validator, diagram, options) {
@@ -325,7 +333,7 @@ export function assertDiagram(diagram, options = {}) {
 }
 
 export function assertPreparedDiagram(diagram, options = {}) {
-  const snapshot = snapshotDiagramStyles(diagram);
+  const snapshot = snapshotDiagramRecords(diagram);
   const issues = validatePreparedDiagramSnapshot(snapshot, options);
   throwForIssues(issues);
   return normalizeValidatedDiagram(snapshot);
@@ -364,7 +372,7 @@ function normalizeValidatedDiagram(diagram) {
 }
 
 export function normalizeDiagram(diagram, options = {}) {
-  const snapshot = snapshotDiagramStyles(diagram);
+  const snapshot = snapshotDiagramRecords(diagram);
   throwForIssues(validateDiagramSnapshot(snapshot, options));
   return normalizeValidatedDiagram(snapshot);
 }
