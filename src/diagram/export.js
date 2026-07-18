@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { DiagramDocument } from "./DiagramDocument.js";
+import { DiagramDocument, documentMetrics } from "./DiagramDocument.js";
 import { prepareDiagram } from "./layout/index.js";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>';
@@ -197,4 +197,122 @@ export function safeDiagramFilename(title, extension) {
   truncated = truncated.replace(/[.\s-]+$/gu, "") || "diagram";
   if (WINDOWS_DEVICE.test(truncated)) truncated = `_${truncated}`;
   return `${truncated}${suffix}`;
+}
+
+function objectUrlDependencies(dependencies) {
+  const needsUrlApi = !dependencies.createObjectURL || !dependencies.revokeObjectURL;
+  const urlApi = needsUrlApi ? (dependencies.urlApi ?? globalThis.URL) : null;
+  return {
+    createObjectURL: dependencies.createObjectURL
+      ?? urlApi.createObjectURL.bind(urlApi),
+    revokeObjectURL: dependencies.revokeObjectURL
+      ?? urlApi.revokeObjectURL.bind(urlApi),
+  };
+}
+
+function assertRasterInput(svg, dimensions) {
+  if (typeof svg !== "string" || svg.trim().length === 0) {
+    throw new TypeError("Invalid SVG for PNG export: expected a non-empty string");
+  }
+  if (!dimensions || typeof dimensions !== "object") {
+    throw new TypeError("Invalid PNG export dimensions: expected width and height");
+  }
+  for (const name of ["width", "height"]) {
+    if (!Number.isFinite(dimensions[name]) || dimensions[name] <= 0) {
+      throw new TypeError(`Invalid PNG export ${name}: expected a positive finite number`);
+    }
+  }
+}
+
+function decodeImage(image, source) {
+  return new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = () => reject(new Error("Unable to decode the SVG for PNG export"));
+    try {
+      image.src = source;
+    } catch (error) {
+      reject(error);
+    }
+  }).finally(() => {
+    image.onload = null;
+    image.onerror = null;
+  });
+}
+
+function encodePng(canvas) {
+  return new Promise((resolve, reject) => {
+    try {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Unable to encode the PNG export"));
+      }, "image/png");
+    } catch (error) {
+      reject(new Error("Unable to encode the PNG export", { cause: error }));
+    }
+  });
+}
+
+export async function rasterizeSvg(svg, dimensions, dependencies = {}) {
+  assertRasterInput(svg, dimensions);
+  const createCanvas = dependencies.createCanvas
+    ?? (() => globalThis.document.createElement("canvas"));
+  const createImage = dependencies.createImage
+    ?? (() => new globalThis.Image());
+  const canvas = createCanvas();
+  const width = Math.max(1, Math.round(dimensions.width * 2));
+  const height = Math.max(1, Math.round(dimensions.height * 2));
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("PNG export requires a 2D canvas context");
+
+  const { createObjectURL, revokeObjectURL } = objectUrlDependencies(dependencies);
+  const source = createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+  try {
+    const image = createImage();
+    await decodeImage(image, source);
+    context.fillStyle = "#FFFFFF";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    return await encodePng(canvas);
+  } finally {
+    revokeObjectURL(source);
+  }
+}
+
+export function downloadBlob(blob, filename, dependencies = {}) {
+  const documentApi = dependencies.document ?? globalThis.document;
+  const { createObjectURL, revokeObjectURL } = objectUrlDependencies(dependencies);
+  const source = createObjectURL(blob);
+  let link;
+  try {
+    link = documentApi.createElement("a");
+    link.href = source;
+    link.download = filename;
+    documentApi.body.append(link);
+    link.click();
+  } finally {
+    try {
+      link?.remove();
+    } finally {
+      revokeObjectURL(source);
+    }
+  }
+}
+
+export function downloadDiagramSvg(diagram, dependencies = {}) {
+  const svg = renderDiagramSvg(diagram);
+  const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  const download = dependencies.downloadBlob ?? downloadBlob;
+  return download(blob, safeDiagramFilename(diagram.title, "svg"), dependencies);
+}
+
+export async function downloadDiagramPng(diagram, dependencies = {}) {
+  const prepared = prepareDiagram(diagram);
+  const svg = renderDiagramSvg(prepared);
+  const metrics = documentMetrics(prepared);
+  const rasterize = dependencies.rasterizeSvg ?? rasterizeSvg;
+  const download = dependencies.downloadBlob ?? downloadBlob;
+  const blob = await rasterize(svg, metrics, dependencies);
+  return download(blob, safeDiagramFilename(prepared.title, "png"), dependencies);
 }

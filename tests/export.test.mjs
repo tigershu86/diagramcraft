@@ -8,7 +8,14 @@ import {
   documentMetrics,
   resolvedLegend,
 } from "../src/diagram/DiagramDocument.js";
-import { renderDiagramSvg, safeDiagramFilename } from "../src/diagram/export.js";
+import {
+  downloadBlob,
+  downloadDiagramPng,
+  downloadDiagramSvg,
+  rasterizeSvg,
+  renderDiagramSvg,
+  safeDiagramFilename,
+} from "../src/diagram/export.js";
 import { prepareDiagram } from "../src/diagram/layout/index.js";
 
 const EXPORT_ID_PREFIX = "svg-65-78-70-6f-72-74";
@@ -166,6 +173,310 @@ test("safeDiagramFilename truncates only at grapheme boundaries", () => {
   assert.ok(stem.length > 0);
   assert.equal(stem, family.repeat(stem.length / family.length));
   assert.doesNotMatch(stem, /\uFFFD/);
+});
+
+test("rasterizeSvg paints an exact 2x white PNG and revokes its SVG URL", async () => {
+  const events = [];
+  const image = {};
+  const context = {
+    set fillStyle(value) { events.push(["fillStyle", value]); },
+    fillRect(...args) { events.push(["fillRect", ...args]); },
+    drawImage(...args) { events.push(["drawImage", ...args]); },
+  };
+  const canvas = {
+    getContext(type) {
+      events.push(["getContext", type]);
+      return context;
+    },
+    toBlob(callback, type) {
+      events.push(["toBlob", type]);
+      callback(new Blob(["png"], { type: "image/png" }));
+    },
+  };
+  Object.defineProperty(image, "src", {
+    set(value) {
+      events.push(["src", value]);
+      queueMicrotask(() => image.onload());
+    },
+  });
+  let svgBlob;
+  const result = await rasterizeSvg("<svg><rect/></svg>", { width: 420, height: 300 }, {
+    get urlApi() { throw new Error("unused urlApi accessed"); },
+    createCanvas: () => canvas,
+    createImage: () => image,
+    createObjectURL(blob) {
+      svgBlob = blob;
+      events.push(["createObjectURL", blob.type]);
+      return "blob:svg";
+    },
+    revokeObjectURL(url) { events.push(["revokeObjectURL", url]); },
+  });
+
+  assert.equal(canvas.width, 840);
+  assert.equal(canvas.height, 600);
+  assert.equal(result.type, "image/png");
+  assert.equal(svgBlob.type, "image/svg+xml;charset=utf-8");
+  assert.equal(await svgBlob.text(), "<svg><rect/></svg>");
+  assert.deepEqual(events, [
+    ["getContext", "2d"],
+    ["createObjectURL", "image/svg+xml;charset=utf-8"],
+    ["src", "blob:svg"],
+    ["fillStyle", "#FFFFFF"],
+    ["fillRect", 0, 0, 840, 600],
+    ["drawImage", image, 0, 0, 840, 600],
+    ["toBlob", "image/png"],
+    ["revokeObjectURL", "blob:svg"],
+  ]);
+});
+
+test("rasterizeSvg rejects invalid input before allocating an object URL", async () => {
+  const invalid = [
+    ["", { width: 1, height: 1 }],
+    ["   ", { width: 1, height: 1 }],
+    [42, { width: 1, height: 1 }],
+    ["<svg/>", null],
+    ["<svg/>", { width: 0, height: 1 }],
+    ["<svg/>", { width: 1, height: Number.POSITIVE_INFINITY }],
+  ];
+  let allocations = 0;
+  const dependencies = {
+    createCanvas: () => ({ getContext: () => ({}) }),
+    createImage: () => { throw new Error("unexpected image allocation"); },
+    createObjectURL() { allocations += 1; return "blob:invalid"; },
+    revokeObjectURL() {},
+  };
+
+  for (const [svg, dimensions] of invalid) {
+    await assert.rejects(
+      () => rasterizeSvg(svg, dimensions, dependencies),
+      /SVG|dimensions|width|height|positive|integer/i,
+    );
+  }
+  assert.equal(allocations, 0);
+});
+
+test("rasterizeSvg rounds fractional doubled dimensions to positive pixel integers", async () => {
+  const canvas = {
+    getContext: () => ({ fillRect() {}, drawImage() {} }),
+    toBlob: (callback) => callback(new Blob(["png"], { type: "image/png" })),
+  };
+  const image = {};
+  Object.defineProperty(image, "src", {
+    set() { queueMicrotask(() => image.onload()); },
+  });
+
+  await rasterizeSvg("<svg/>", { width: 10.25, height: 4.1 }, {
+    createCanvas: () => canvas,
+    createImage: () => image,
+    createObjectURL: () => "blob:fractional",
+    revokeObjectURL() {},
+  });
+
+  assert.equal(canvas.width, 21);
+  assert.equal(canvas.height, 8);
+});
+
+test("rasterizeSvg reports a missing 2D context without creating or revoking a URL", async () => {
+  let created = 0;
+  let revoked = 0;
+
+  await assert.rejects(
+    () => rasterizeSvg("<svg/>", { width: 10, height: 20 }, {
+      createCanvas: () => ({ getContext: () => null }),
+      createObjectURL() { created += 1; return "blob:unused"; },
+      revokeObjectURL() { revoked += 1; },
+    }),
+    /PNG export requires a 2D canvas context/,
+  );
+  assert.equal(created, 0);
+  assert.equal(revoked, 0);
+});
+
+test("rasterizeSvg revokes the SVG URL when image decoding fails", async () => {
+  const revoked = [];
+  const image = {};
+  Object.defineProperty(image, "src", {
+    set() { queueMicrotask(() => image.onerror(new Error("decode"))); },
+  });
+
+  await assert.rejects(
+    () => rasterizeSvg("<svg/>", { width: 10, height: 20 }, {
+      createCanvas: () => ({ getContext: () => ({}) }),
+      createImage: () => image,
+      createObjectURL: () => "blob:decode",
+      revokeObjectURL: (url) => revoked.push(url),
+    }),
+    /Unable to decode the SVG for PNG export/,
+  );
+  assert.deepEqual(revoked, ["blob:decode"]);
+  assert.equal(image.onload, null);
+  assert.equal(image.onerror, null);
+});
+
+test("rasterizeSvg revokes the SVG URL when image creation or src assignment throws", async () => {
+  for (const [name, createImage] of [
+    ["createImage", () => { throw new Error("create image failed"); }],
+    ["src", () => Object.defineProperty({}, "src", {
+      set() { throw new Error("src failed"); },
+    })],
+  ]) {
+    const revoked = [];
+    await assert.rejects(
+      () => rasterizeSvg("<svg/>", { width: 10, height: 20 }, {
+        createCanvas: () => ({ getContext: () => ({}) }),
+        createImage,
+        createObjectURL: () => `blob:${name}`,
+        revokeObjectURL: (url) => revoked.push(url),
+      }),
+      new RegExp(`${name === "src" ? "src" : "create image"} failed`),
+    );
+    assert.deepEqual(revoked, [`blob:${name}`]);
+  }
+});
+
+test("rasterizeSvg revokes the SVG URL when drawing or PNG encoding fails", async () => {
+  for (const [name, context, toBlob, message] of [
+    ["draw", { fillRect() {}, drawImage() { throw new Error("draw failed"); } }, () => {}, /draw failed/],
+    ["null", { fillRect() {}, drawImage() {} }, (callback) => callback(null), /Unable to encode the PNG export/],
+    ["throw", { fillRect() {}, drawImage() {} }, () => { throw new Error("encode threw"); }, /Unable to encode the PNG export/],
+  ]) {
+    const revoked = [];
+    const image = {};
+    Object.defineProperty(image, "src", {
+      set() { queueMicrotask(() => image.onload()); },
+    });
+    await assert.rejects(
+      () => rasterizeSvg("<svg/>", { width: 10, height: 20 }, {
+        createCanvas: () => ({ getContext: () => context, toBlob }),
+        createImage: () => image,
+        createObjectURL: () => `blob:${name}`,
+        revokeObjectURL: (url) => revoked.push(url),
+      }),
+      message,
+    );
+    assert.deepEqual(revoked, [`blob:${name}`]);
+  }
+});
+
+test("downloadBlob clicks a temporary link and cleans it up in order", () => {
+  const events = [];
+  const link = {
+    click() { events.push("click"); },
+    remove() { events.push("remove"); },
+  };
+  const blob = new Blob(["diagram"]);
+
+  downloadBlob(blob, "safe.svg", {
+    createObjectURL(value) { assert.equal(value, blob); return "blob:download"; },
+    revokeObjectURL(url) { events.push(`revoke:${url}`); },
+    document: {
+      createElement(tag) { assert.equal(tag, "a"); return link; },
+      body: { append(value) { assert.equal(value, link); events.push("append"); } },
+    },
+  });
+
+  assert.equal(link.href, "blob:download");
+  assert.equal(link.download, "safe.svg");
+  assert.deepEqual(events, ["append", "click", "remove", "revoke:blob:download"]);
+});
+
+test("downloadBlob revokes its URL and removes any created link on setup or click failure", () => {
+  for (const mode of ["createElement", "append", "click", "remove"]) {
+    const events = [];
+    const link = {
+      click() {
+        events.push("click");
+        if (mode === "click") throw new Error("click failed");
+      },
+      remove() {
+        events.push("remove");
+        if (mode === "remove") throw new Error("remove failed");
+      },
+    };
+    assert.throws(
+      () => downloadBlob(new Blob(["x"]), "x.svg", {
+        createObjectURL: () => `blob:${mode}`,
+        revokeObjectURL(url) { events.push(`revoke:${url}`); },
+        document: {
+          createElement() {
+            if (mode === "createElement") throw new Error("createElement failed");
+            return link;
+          },
+          body: {
+            append() {
+              events.push("append");
+              if (mode === "append") throw new Error("append failed");
+            },
+          },
+        },
+      }),
+      new RegExp(`${mode} failed`),
+    );
+    assert.equal(events.at(-1), `revoke:blob:${mode}`);
+    if (mode !== "createElement") assert.ok(events.includes("remove"));
+  }
+});
+
+test("downloadDiagramSvg downloads standalone XML with a safe SVG filename", async () => {
+  let captured;
+  downloadDiagramSvg({ ...exportDiagram, title: "Unsafe / title" }, {
+    downloadBlob(blob, filename, dependencies) { captured = { blob, filename, dependencies }; },
+  });
+
+  assert.equal(captured.filename, "Unsafe-title.svg");
+  assert.equal(captured.blob.type, "image/svg+xml;charset=utf-8");
+  assert.equal(captured.dependencies.downloadBlob instanceof Function, true);
+  const xml = await captured.blob.text();
+  assert.ok(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?><svg'));
+  assert.match(xml, /<title[^>]*>Unsafe \/ title<\/title>/);
+});
+
+test("downloadDiagramPng rasterizes full prepared document metrics and downloads once", async () => {
+  const png = new Blob(["png"], { type: "image/png" });
+  const calls = [];
+  const dependencies = {
+    async rasterizeSvg(svg, metrics, passedDependencies) {
+      calls.push({ kind: "rasterize", svg, metrics, passedDependencies });
+      return png;
+    },
+    downloadBlob(blob, filename, passedDependencies) {
+      calls.push({ kind: "download", blob, filename, passedDependencies });
+    },
+  };
+  await downloadDiagramPng({
+    kind: "flowchart",
+    title: "Coordinate / PNG",
+    nodes: [
+      { id: "start", label: "Start", type: "terminal" },
+      { id: "finish", label: "Finish", type: "process" },
+    ],
+    edges: [{ from: "start", to: "finish" }],
+    legend: [{ type: "process", label: "Full legend" }],
+  }, dependencies);
+
+  assert.equal(calls.length, 2);
+  const [raster, download] = calls;
+  assert.equal(raster.kind, "rasterize");
+  assert.equal(raster.passedDependencies, dependencies);
+  assert.ok(raster.metrics.titleBand > 0);
+  assert.ok(raster.metrics.legendHeight > 0);
+  assert.equal(raster.metrics.height, raster.metrics.legendY + raster.metrics.legendHeight);
+  assert.match(raster.svg, new RegExp(`<svg[^>]+width="${raster.metrics.width}"[^>]+height="${raster.metrics.height}"`));
+  assert.match(raster.svg, />Full legend<\/text>/);
+  assert.deepEqual(download, {
+    kind: "download",
+    blob: png,
+    filename: "Coordinate-PNG.png",
+    passedDependencies: dependencies,
+  });
+});
+
+test("the export module imports in Node without document or Image globals", async () => {
+  assert.equal(typeof globalThis.document, "undefined");
+  assert.equal(typeof globalThis.Image, "undefined");
+  const exports = await import(`../src/diagram/export.js?node-safe=${Date.now()}`);
+  assert.equal(typeof exports.rasterizeSvg, "function");
+  assert.equal(typeof exports.downloadBlob, "function");
 });
 
 test("renderDiagramSvg emits a complete standalone SVG document with SVG legend", () => {
