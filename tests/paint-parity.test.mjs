@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { runInNewContext } from "node:vm";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import Ajv2020 from "ajv/dist/2020.js";
@@ -63,6 +64,12 @@ const validPaints = [
   "rgba(10%, 20%, 30%, 50%)",
   "rgb(10 20% 30 / 40%)",
   "rgb(1e2 2e-3 3)",
+  "rgb(10e2 0 0)",
+  "rgb(1e308 0 0)",
+  "rgb(1.7976931348623157e308 0 0)",
+  "rgb(1.7976931348623158e308 0 0)",
+  " \t\r\n#AbC \n\r\t",
+  "rgb(\t1  \n2\r 3 /\t.5\n)",
   "hsl(120deg, 50%, 40%)",
   "hsla(.5turn 50% 40% / .75)",
   "hwb(120 10% 20% / 30%)",
@@ -91,9 +98,17 @@ const invalidPaints = [
   "rgba(1 2 3 4)",
   "hsl(120deg 50 40%)",
   "lab(1e999 0 0)",
+  "rgb(1e309 0 0)",
+  "rgb(1.8e308 0 0)",
+  "rgb(1.7976931348623159e308 0 0)",
   `rgb(${"9".repeat(309)} 0 0)`,
+  `rgb(.${"1".repeat(1025)} 0 0)`,
   "oklch(NaN .2 .25turn)",
   "rgb(Infinity 0 0)",
+  "\u000B#abc",
+  "#abc\u000C",
+  "rgb(1\u000B2 3)",
+  "rgb(1 2\u000C3)",
 ];
 
 test("safe paints have JSON Schema, runtime, preview, and standalone export parity", () => {
@@ -154,4 +169,49 @@ test("node style is closed to the four renderer paint fields", () => {
     /unknown-node-style-field[\s\S]*nodes\[0\]\.style\.shadow/,
   );
   assert.throws(() => renderDiagramSvg(diagram), /unknown-node-style-field[\s\S]*nodes\[0\]\.style\.shadow/);
+});
+
+test("runtime accepts cross-realm plain styles and safely rejects exotic or hostile objects", () => {
+  const crossRealmStyle = runInNewContext('({ fill: "#abc" })');
+  const crossRealmDiagram = {
+    ...baseDiagram,
+    nodes: [{ ...baseDiagram.nodes[0], style: crossRealmStyle }, baseDiagram.nodes[1]],
+  };
+  assert.equal(validateJson(crossRealmDiagram), true, JSON.stringify(validateJson.errors));
+  assert.deepEqual(validateDiagram(crossRealmDiagram), []);
+  assert.doesNotThrow(() => prepareDiagram(crossRealmDiagram));
+  assert.doesNotThrow(
+    () => renderToStaticMarkup(React.createElement(DiagramRenderer, { diagram: crossRealmDiagram })),
+  );
+  assert.doesNotThrow(() => renderDiagramSvg(crossRealmDiagram));
+
+  class StyleInstance {
+    constructor() {
+      this.fill = "#abc";
+    }
+  }
+  const { proxy: revokedStyle, revoke } = Proxy.revocable({ fill: "#abc" }, {});
+  revoke();
+  const hostileStyles = [
+    null,
+    [],
+    new Date(),
+    new Map(),
+    new StyleInstance(),
+    revokedStyle,
+    new Proxy({}, { getPrototypeOf() { throw new Error("hostile prototype"); } }),
+    new Proxy({}, { ownKeys() { throw new Error("hostile keys"); } }),
+  ];
+
+  for (const style of hostileStyles) {
+    const diagram = {
+      ...baseDiagram,
+      nodes: [{ ...baseDiagram.nodes[0], style }, baseDiagram.nodes[1]],
+    };
+    assert.doesNotThrow(() => validateDiagram(diagram));
+    assert.ok(validateDiagram(diagram).some(({ code, path }) => (
+      code === "invalid-node-style" && path === "nodes[0].style"
+    )));
+    assert.throws(() => prepareDiagram(diagram), /invalid-node-style[\s\S]*nodes\[0\]\.style/);
+  }
 });

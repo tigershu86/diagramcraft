@@ -14,7 +14,7 @@ import {
   NODE_TYPES,
   TIER_FIELDS,
 } from "./contract.js";
-import { isSupportedPaint, NODE_STYLE_PAINT_FIELDS } from "./paint.js";
+import { isPlainRecord, isSupportedPaint, NODE_STYLE_PAINT_FIELDS } from "./paint.js";
 
 const kinds = new Set(DIAGRAM_KINDS);
 const anchors = new Set(ANCHORS);
@@ -187,30 +187,32 @@ export function validateDiagram(diagram, options = {}) {
       issues.push(issue("invalid-node-font-size", `${nodePath}.fontSize`, "node fontSize must be a positive number"));
     }
     if (node.style !== undefined) {
-      const styleIsPlainObject = node.style !== null
-        && typeof node.style === "object"
-        && !Array.isArray(node.style)
-        && (Object.getPrototypeOf(node.style) === Object.prototype || Object.getPrototypeOf(node.style) === null);
-      if (!styleIsPlainObject) {
+      if (!isPlainRecord(node.style)) {
         issues.push(issue("invalid-node-style", `${nodePath}.style`, "node style must be a plain object"));
       } else {
-        validateKnownFields(
-          issues,
-          node.style,
-          nodeStylePaintFields,
-          "unknown-node-style-field",
-          `${nodePath}.style`,
-          "node style field",
-        );
-        NODE_STYLE_PAINT_FIELDS.forEach((field) => {
-          if (Object.hasOwn(node.style, field) && !isSupportedPaint(node.style[field])) {
-            issues.push(issue(
-              "invalid-node-style-paint",
-              `${nodePath}.style.${field}`,
-              `node style ${field} must be a supported standalone paint`,
-            ));
-          }
-        });
+        const issueStart = issues.length;
+        try {
+          validateKnownFields(
+            issues,
+            node.style,
+            nodeStylePaintFields,
+            "unknown-node-style-field",
+            `${nodePath}.style`,
+            "node style field",
+          );
+          NODE_STYLE_PAINT_FIELDS.forEach((field) => {
+            if (Object.hasOwn(node.style, field) && !isSupportedPaint(node.style[field])) {
+              issues.push(issue(
+                "invalid-node-style-paint",
+                `${nodePath}.style.${field}`,
+                `node style ${field} must be a supported standalone paint`,
+              ));
+            }
+          });
+        } catch {
+          issues.splice(issueStart);
+          issues.push(issue("invalid-node-style", `${nodePath}.style`, "node style must be a safely readable plain object"));
+        }
       }
     }
     if (node.shape !== undefined && !shapes.has(node.shape)) issues.push(issue("invalid-node-shape", `${nodePath}.shape`, "node shape must be supported"));

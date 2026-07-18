@@ -1,4 +1,5 @@
 export const NODE_STYLE_PAINT_FIELDS = Object.freeze(["fill", "stroke", "accent", "text"]);
+export const PAINT_MAX_LENGTH = 1024;
 
 const NAMED_COLORS = (
   "aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown "
@@ -29,18 +30,43 @@ function caseInsensitiveLiteral(value) {
 // Keep this grammar browser-independent: allowing a browser CSS parser here would
 // also allow external references such as url(), var(), and future unsafe syntax.
 // Decimal tokens are bounded to values JavaScript can keep finite. Scientific
-// notation uses a normalized mantissa and a safe exponent range; this preserves
-// the established finite exponent syntax without admitting Infinity.
+// notation has compact safe ranges for ordinary multi-digit mantissas, the full
+// normalized exponent range, and an explicit Number.MAX_VALUE boundary branch.
+// Every accepted branch is finite and is expressible by standard JSON Schema.
 const DECIMAL = String.raw`(?:\d{1,308}(?:\.\d+)?|\.\d+)`;
-const SAFE_POSITIVE_EXPONENT = String.raw`\+?0*(?:\d{1,2}|[12]\d{2}|30[0-7])`;
-const SCIENTIFIC = String.raw`(?:\d(?:\.\d+)?|\.\d+)[eE](?:-\d+|${SAFE_POSITIVE_EXPONENT})`;
+const ZERO = String.raw`(?:0+(?:\.0+)?|\.0+)`;
+const COMMON_POSITIVE_EXPONENT = String.raw`\+?0*\d{1,2}`;
+const HIGH_POSITIVE_EXPONENT = String.raw`\+?0*(?:[12]\d{2}|30[0-7])`;
+
+function decimalFractionAtMost(boundary) {
+  const alternatives = [];
+  for (let index = 0; index < boundary.length; index += 1) {
+    const prefix = boundary.slice(0, index);
+    const digit = Number(boundary[index]);
+    if (index > 0) alternatives.push(prefix);
+    if (digit > 0) alternatives.push(`${prefix}[0-${digit - 1}]\\d*`);
+  }
+  alternatives.push(`${boundary}0*`);
+  return `(?:${alternatives.join("|")})`;
+}
+
+// Decimal parsing rounds ...3158 to Number.MAX_VALUE; ...3159 crosses to Infinity.
+const MAX_VALUE_MANTISSA = `1(?:\\.${decimalFractionAtMost("7976931348623158")})?`;
+const EXPONENT_308_MANTISSA = `(?:${ZERO}|0*\\.\\d+|0*${MAX_VALUE_MANTISSA})`;
+const SCIENTIFIC = [
+  `${ZERO}[eE][+-]?\\d+`,
+  `${DECIMAL}[eE]-\\d+`,
+  String.raw`(?:\d{1,100}(?:\.\d+)?|\.\d+)[eE]${COMMON_POSITIVE_EXPONENT}`,
+  String.raw`(?:\d(?:\.\d+)?|\.\d+)[eE]${HIGH_POSITIVE_EXPONENT}`,
+  `${EXPONENT_308_MANTISSA}[eE]\\+?0*308`,
+].join("|");
 const NUMBER = String.raw`[+-]?(?:${SCIENTIFIC}|${DECIMAL})`;
 const PERCENTAGE = `${NUMBER}%`;
 const NUMBER_OR_PERCENTAGE = `${NUMBER}%?`;
 const HUE = `${NUMBER}(?:${["deg", "grad", "rad", "turn"].map(caseInsensitiveLiteral).join("|")})?`;
 const ALPHA = NUMBER_OR_PERCENTAGE;
-const SPACE = String.raw`\s+`;
-const OPTIONAL_SPACE = String.raw`\s*`;
+const SPACE = String.raw`[ \t\r\n]+`;
+const OPTIONAL_SPACE = String.raw`[ \t\r\n]*`;
 const SLASH_ALPHA = `${OPTIONAL_SPACE}/${OPTIONAL_SPACE}${ALPHA}`;
 
 function functionName(name) {
@@ -86,9 +112,33 @@ const PAINT_PATTERN = new RegExp(PAINT_PATTERN_SOURCE);
 
 export const PAINT_JSON_SCHEMA = Object.freeze({
   type: "string",
+  maxLength: PAINT_MAX_LENGTH,
   pattern: PAINT_PATTERN_SOURCE,
 });
 
 export function isSupportedPaint(value) {
-  return typeof value === "string" && PAINT_PATTERN.test(value);
+  return typeof value === "string"
+    && value.length <= PAINT_MAX_LENGTH
+    && PAINT_PATTERN.test(value);
+}
+
+const NATIVE_OBJECT_SOURCE = Function.prototype.toString.call(Object);
+
+export function isPlainRecord(value) {
+  if (value === null || typeof value !== "object") return false;
+  try {
+    if (Array.isArray(value)) return false;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype === null) {
+      Object.getOwnPropertyNames(value);
+      return true;
+    }
+    const constructor = Object.getOwnPropertyDescriptor(prototype, "constructor")?.value;
+    if (typeof constructor !== "function"
+      || Function.prototype.toString.call(constructor) !== NATIVE_OBJECT_SOURCE) return false;
+    Object.getOwnPropertyNames(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
