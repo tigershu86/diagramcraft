@@ -357,6 +357,35 @@ test("DiagramRenderer colors selected edge arrowheads with the source node accen
     },
   }));
 
-  assert.match(html, /<marker id="[^"]+-service-database"[^>]*><path[^>]+fill="#16A34A"/);
-  assert.match(html, /<path d="M [^"]+" fill="none" stroke="#16A34A"[^>]+marker-end="url\(#[^"]+-service-database\)"/);
+  assert.match(html, /<marker id="[^"]+-arrow-active-0"[^>]*><path[^>]+fill="#16A34A"/);
+  assert.match(html, /<path d="M [^"]+" fill="none" stroke="#16A34A"[^>]+marker-end="url\(#[^"]+-arrow-active-0\)"/);
+});
+
+test("DiagramRenderer gives repeated selected edges distinct SVG marker ids", () => {
+  const html = renderToStaticMarkup(React.createElement(DiagramRenderer, {
+    initialSelectedId: "a b)#x",
+    diagram: {
+      kind: "flowchart",
+      title: "Distinct selected markers",
+      width: 440,
+      height: 220,
+      nodes: [
+        { id: "a b)#x", label: "Left", type: "service", x: 20, y: 80 },
+        { id: "a-b--x", label: "Right", type: "database", x: 250, y: 74 },
+      ],
+      edges: [
+        { id: "same", from: "a b)#x", to: "a-b--x" },
+        { id: "same", from: "a b)#x", to: "a-b--x", dashed: true },
+      ],
+    },
+  }));
+  const markerIds = [...html.matchAll(/<marker id="([^"]+-arrow-active-[^"]+)"/g)]
+    .map((match) => match[1]);
+
+  assert.equal(markerIds.length, 2);
+  assert.equal(new Set(markerIds).size, 2);
+  assert.ok(markerIds.every((id) => /^[A-Za-z_][A-Za-z0-9_.:-]*$/.test(id)));
+  for (const markerId of markerIds) {
+    assert.match(html, new RegExp(`marker-end="url\\(#${markerId}\\)"`));
+  }
 });

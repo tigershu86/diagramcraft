@@ -5,6 +5,13 @@ import { FONT, TOKENS, nodeStyle } from "./theme.js";
 
 const h = React.createElement;
 
+export function svgIdPrefix(value) {
+  const encoded = [...String(value)]
+    .map((character) => character.codePointAt(0).toString(16))
+    .join("-");
+  return `svg-${encoded || "0"}`;
+}
+
 function shapeElements(node, style, active, selected, clipId) {
   const { x, y, width, height, shape } = node;
   const centerX = x + width / 2;
@@ -75,12 +82,11 @@ function shapeElements(node, style, active, selected, clipId) {
   return elements;
 }
 
-function DiagramNode({ node, hovered, selected, onHover, onSelect, interactive, idPrefix }) {
+function DiagramNode({ node, hovered, selected, onHover, onSelect, interactive, clipId }) {
   const style = nodeStyle(node);
   const active = hovered || selected;
   const centerX = node.x + node.width / 2;
   const centerY = node.y + node.height / 2;
-  const clipId = `${idPrefix}-clip-${node.id}`;
   const textY = centerY - (node.sublabel ? 8 : 0) + (node.shape === "database" ? 5 : 0);
   const activate = () => onSelect(node.id);
   const groupProps = interactive ? {
@@ -143,7 +149,7 @@ function DiagramNode({ node, hovered, selected, onHover, onSelect, interactive, 
       fontWeight: 700,
       fill: style.text,
       fontFamily: FONT,
-      style: { pointerEvents: "none", userSelect: "none" },
+      style: interactive ? { pointerEvents: "none", userSelect: "none" } : undefined,
     }, node.label),
     node.sublabel ? h("text", {
       key: "sublabel",
@@ -155,19 +161,17 @@ function DiagramNode({ node, hovered, selected, onHover, onSelect, interactive, 
       fill: style.text,
       opacity: 0.58,
       fontFamily: FONT,
-      style: { pointerEvents: "none", userSelect: "none" },
+      style: interactive ? { pointerEvents: "none", userSelect: "none" } : undefined,
     }, node.sublabel) : null,
   ]);
 }
 
-function DiagramEdge({ edge, fromNode, toNode, selected, interactive, markerId, activeMarkerId }) {
+function DiagramEdge({ edge, fromNode, toNode, selected, interactive, markerId, selectedMarkerId }) {
   const route = routeEdge(fromNode, toNode, edge);
   const connected = selected === edge.from || selected === edge.to;
   const dimmed = Boolean(selected && !connected);
   const fromStyle = nodeStyle(fromNode);
   const stroke = connected ? fromStyle.accent : edge.dashed ? TOKENS.edgeMuted : TOKENS.edge;
-  const markerSuffix = `${edge.from}-${edge.to}`.replace(/[^A-Za-z0-9_-]/g, "-");
-  const selectedMarkerId = `${activeMarkerId}-${markerSuffix}`;
   const label = edgeLabelPosition(route, edge, fromNode, toNode);
 
   return h("g", {
@@ -254,8 +258,9 @@ export function DiagramScene({
   interactive = false,
   idPrefix = "diagram",
 }) {
-  const markerId = `${idPrefix}-arrow`;
-  const activeMarkerId = `${idPrefix}-arrow-active`;
+  const safePrefix = svgIdPrefix(idPrefix);
+  const markerId = `${safePrefix}-arrow`;
+  const activeMarkerId = `${safePrefix}-arrow-active`;
   const nodeMap = new Map(diagram.nodes.map((node) => [node.id, node]));
   const selectedId = nodeMap.has(selected) ? selected : null;
 
@@ -271,16 +276,16 @@ export function DiagramScene({
       diagram,
     })),
     ...diagram.edges.map((edge, index) => h(DiagramEdge, {
-      key: edge.id || `${edge.from}-${edge.to}-${index}`,
+      key: `${edge.id || `${edge.from}-${edge.to}`}-${index}`,
       edge,
       fromNode: nodeMap.get(edge.from),
       toNode: nodeMap.get(edge.to),
       selected: selectedId,
       interactive,
       markerId,
-      activeMarkerId,
+      selectedMarkerId: `${activeMarkerId}-${index}`,
     })),
-    ...diagram.nodes.map((node) => h(DiagramNode, {
+    ...diagram.nodes.map((node, index) => h(DiagramNode, {
       key: node.id,
       node,
       hovered: hovered === node.id,
@@ -288,7 +293,7 @@ export function DiagramScene({
       onHover,
       onSelect,
       interactive,
-      idPrefix,
+      clipId: `${safePrefix}-clip-${index}`,
     })),
   ];
 }

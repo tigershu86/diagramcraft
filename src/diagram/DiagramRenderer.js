@@ -50,8 +50,7 @@ export function DiagramRenderer({
   const reactId = useId().replace(/:/g, "");
   const titleId = `${reactId}-title`;
   const descriptionId = `${reactId}-description`;
-  const nodeMap = new Map(diagram.nodes.map((node) => [node.id, node]));
-  const selectedId = nodeMap.has(selected) ? selected : null;
+  const selectedId = diagram.nodes.some((node) => node.id === selected) ? selected : null;
   const inferredLegend = [...new Set(diagram.nodes.map((node) => node.type))];
   const legend = diagram.legend.length ? diagram.legend : inferredLegend;
   const defaultMinWidth = Math.min(diagram.width, diagram.kind === "architecture" ? 560 : 520);
