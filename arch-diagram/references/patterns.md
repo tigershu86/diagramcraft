@@ -19,17 +19,17 @@ Data Layer:     y=540, h=140
 
 **Nodes** (x, y, w=140, h=60 unless noted):
 ```
-browser:        x=430, y=65   — Web Client, 🌐, #E8F4FD/#2E86C1
-load_balancer:  x=430, y=185  — Load Balancer, ⚖️, #FEF9E7/#F39C12
-api_gateway:    x=430, y=305  — API Gateway, 🔀, #EBF5FB/#2980B9
-user_svc:       x=160, y=425  — User Service, 🟢, #EAFAF1/#27AE60
-order_svc:      x=360, y=425  — Order Service, 🟢, #EAFAF1/#27AE60
-product_svc:    x=560, y=425  — Product Service, 🟢, #EAFAF1/#27AE60
-notify_svc:     x=760, y=425  — Notify Service, 🟢, #EAFAF1/#27AE60
-user_db:        x=100, y=570  — Users DB, 🗄️, #EBF5FB/#2471A3, cylinder
-order_db:       x=300, y=570  — Orders DB, 🗄️, #EBF5FB/#2471A3, cylinder
-redis:          x=550, y=570  — Redis Cache, ⚡, #FDEDEC/#E74C3C
-message_queue:  x=750, y=570  — Message Queue, 📨, #FFF3E0/#E67E22
+browser:        x=430, y=65   — Web Client, 🌐, #EFF6FF/#3B82F6
+load_balancer:  x=430, y=185  — Load Balancer, ⚖️, #FFFBEB/#F59E0B
+api_gateway:    x=430, y=305  — API Gateway, 🔀, #6366F1/#4F46E5
+user_svc:       x=160, y=425  — User Service, 🟢, #F0FDF4/#16A34A
+order_svc:      x=360, y=425  — Order Service, 🟢, #F0FDF4/#16A34A
+product_svc:    x=560, y=425  — Product Service, 🟢, #F0FDF4/#16A34A
+notify_svc:     x=760, y=425  — Notify Service, 🟢, #F0FDF4/#16A34A
+user_db:        x=100, y=570  — Users DB, 🗄️, #EFF6FF/#1D4ED8, cylinder
+order_db:       x=300, y=570  — Orders DB, 🗄️, #EFF6FF/#1D4ED8, cylinder
+redis:          x=550, y=570  — Redis Cache, ⚡, #FEF2F2/#E11D48
+message_queue:  x=750, y=570  — Message Queue, 📨, #FFF7ED/#EA580C
 ```
 
 **Edges**:

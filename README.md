@@ -1,6 +1,6 @@
 # diagramcraft
 
-A pair of Claude skills that bring a consistent visual design language to architecture diagrams and flowcharts — inspired by ByteByteGo's style and the draw.io skill approach.
+A pair of Claude skills plus a shared React/SVG runtime for architecture diagrams and flowcharts — inspired by ByteByteGo's style and the draw.io skill approach.
 
 ## Skills
 
@@ -56,11 +56,61 @@ Color palette by component type:
 
 ## Examples
 
-See the [`examples/`](./examples) directory for ready-to-run React JSX artifacts:
+See the [`examples/`](./examples) directory for data-driven React entry points:
 
 - `arch-ecommerce.jsx` — Full e-commerce microservices architecture (22 nodes)
 - `flowchart-login.jsx` — User login decision flow
 - `arch-flowchart-style.jsx` — Architecture diagram rendered in flowchart style
+
+All three examples import the same `DiagramRenderer`; their graph data lives in `examples/diagrams.js`. This makes schema, routing, interaction, accessibility, and visual-token fixes apply to every example at once.
+
+## Development
+
+Install dependencies and open the interactive preview:
+
+```bash
+npm install
+npm run dev
+```
+
+The preview lets you switch between all three datasets and select nodes with mouse, touch, or keyboard. Build it with `npm run build`.
+
+Run the deterministic repository checks before publishing:
+
+```bash
+npm test
+```
+
+The test suite covers the shared schema, cubic routing, layout diagnostics, accessible SVG rendering, preview surface, skill metadata, reference integrity, and every example graph. Build uploadable archives with:
+
+```bash
+npm run package:skills
+```
+
+This writes `dist/arch-diagram.skill` and `dist/flowchart.skill`. Each archive contains the complete skill folder at its root, including `SKILL.md` and its references.
+
+## Shared Diagram Schema
+
+Every preview diagram uses one serializable contract:
+
+```js
+const diagram = {
+  kind: "architecture", // or "flowchart"
+  title: "System name",
+  subtitle: "Optional context",
+  width: 900,
+  height: 700,
+  tiers: [],
+  nodes: [
+    { id: "web", label: "Web", type: "client", x: 80, y: 60 },
+    { id: "api", label: "API", type: "gateway", x: 80, y: 180 },
+  ],
+  edges: [{ from: "web", to: "api", label: "HTTPS" }],
+  legend: [{ type: "client", label: "Client" }],
+};
+```
+
+`normalizeDiagram` supplies canonical sizes and shapes, `validateDiagram` catches invalid IDs and edges, `validateLayout` reports overlap or canvas overflow, and `DiagramRenderer` owns the SVG and interaction layer. Skill-generated deliverables remain standalone JSX artifacts; the shared runtime is the repository's development and example surface.
 
 ## Inspired by
 

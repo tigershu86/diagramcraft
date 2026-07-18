@@ -1,6 +1,6 @@
 ---
 name: arch-diagram
-description: Generate beautiful system architecture diagrams in the ByteByteGo visual style — clean layered layouts, color-coded components, directional arrows, and grouped tiers. Use this skill whenever the user asks to draw, create, visualize, or design any system architecture, infrastructure diagram, microservice map, data flow diagram, cloud architecture, or component diagram. Also trigger for requests like "画架构图", "系统设计图", "帮我画一个...的架构", "show me how X works", or any description of a technical system that would benefit from visual explanation. Always use this skill even for simple two-component diagrams — visual output is always better.
+description: Generate SVG diagrams for software/cloud architecture, infrastructure, deployment, microservices, components, and data flow. Use flowchart for processes, decisions, sequences, states, or swimlanes.
 ---
 
 # Architecture Diagram Skill — ByteByteGo Style
@@ -25,7 +25,7 @@ If the user's request is vague (e.g., "画一个电商系统架构图"), generat
 
 ## Step 2 — Plan the Layout
 
-Always use a **top-to-bottom tiered layout**:
+Choose the layout from the system topology. Default to a **top-to-bottom tiered layout**:
 
 ```
 [Tier 0] Internet / Client
@@ -43,40 +43,48 @@ Always use a **top-to-bottom tiered layout**:
 
 For each tier, lay components **horizontally** across the tier. Tiers have labeled background zones.
 
+Use a different layout when the topology makes it clearer:
+
+- Event streams and processing pipelines → left-to-right
+- Hub-and-spoke systems → place the hub centrally
+- Peer or regional systems → symmetric clusters
+
+Prefer the smallest layout that preserves dependency direction and minimizes crossings.
+
 ---
 
 ## Step 3 — Apply the ByteByteGo Visual Language
 
 ### Color Palette (use exactly these per component type)
 
-| Component Type | Fill Color | Border | Text |
-|---|---|---|---|
-| Client / Browser / Mobile | `#E8F4FD` | `#2E86C1` | `#1A5276` |
-| CDN | `#E8F8F5` | `#1ABC9C` | `#0E6655` |
-| DNS | `#F4ECF7` | `#8E44AD` | `#6C3483` |
-| Load Balancer | `#FEF9E7` | `#F39C12` | `#9A7D0A` |
-| API Gateway | `#EBF5FB` | `#2980B9` | `#1A5276` |
-| Microservice / Service | `#EAFAF1` | `#27AE60` | `#1E8449` |
-| Cache (Redis/Memcached) | `#FDEDEC` | `#E74C3C` | `#922B21` |
-| SQL Database | `#EBF5FB` | `#2471A3` | `#1A5276` |
-| NoSQL Database | `#F0F3FF` | `#5B5EA6` | `#3C3F8C` |
-| Message Queue | `#FFF3E0` | `#E67E22` | `#935116` |
-| Object Storage / Blob | `#E8F8F5` | `#17A589` | `#0E6655` |
-| Search Engine | `#FEF9E7` | `#D4AC0D` | `#9A7D0A` |
-| External Service / 3rd Party | `#F2F3F4` | `#95A5A6` | `#566573` |
-| Monitoring / Observability | `#F9F0FF` | `#8E44AD` | `#6C3483` |
+| Component Type | Fill | Border | Accent | Text |
+|---|---|---|---|---|
+| Client / Browser / Mobile | `#EFF6FF` | `#BFDBFE` | `#3B82F6` | `#1E40AF` |
+| CDN | `#ECFDF5` | `#A7F3D0` | `#10B981` | `#065F46` |
+| DNS | `#F5F3FF` | `#DDD6FE` | `#8B5CF6` | `#5B21B6` |
+| Load Balancer | `#FFFBEB` | `#FDE68A` | `#F59E0B` | `#92400E` |
+| API Gateway | `#6366F1` | `#4F46E5` | `#4F46E5` | `#FFFFFF` |
+| Microservice / Service | `#F0FDF4` | `#86EFAC` | `#16A34A` | `#14532D` |
+| Cache (Redis/Memcached) | `#FEF2F2` | `#FCA5A5` | `#E11D48` | `#991B1B` |
+| SQL Database | `#EFF6FF` | `#93C5FD` | `#1D4ED8` | `#1D4ED8` |
+| NoSQL Database | `#F5F3FF` | `#C4B5FD` | `#7C3AED` | `#5B21B6` |
+| Message Queue | `#FFF7ED` | `#FED7AA` | `#EA580C` | `#7C2D12` |
+| Object Storage / Blob | `#ECFDF5` | `#6EE7B7` | `#10B981` | `#065F46` |
+| Search Engine | `#FEFCE8` | `#FEF08A` | `#CA8A04` | `#713F12` |
+| External Service / 3rd Party | `#F8FAFC` | `#CBD5E1` | `#94A3B8` | `#475569` |
+| Monitoring / Observability | `#FDF4FF` | `#F0ABFC` | `#A21CAF` | `#701A75` |
 
 ### Background Tier Colors
 
 ```
-Tier zone fill:   rgba(248, 249, 250, 0.8)  — very light gray
-Tier zone border: #DEE2E6  — subtle gray border
-Canvas BG:        #F8F9FA  — warm near-white (never pure white)
+Tier zone fill:   rgba(248, 250, 252, 0.8)  — very light slate
+Tier zone border: #E2E8F0  — subtle slate border
+Canvas BG:        #F8FAFC  — cool near-white (never pure white)
 ```
 
 ### Component Shapes
 
-- **Services, Gateways, Load Balancers, CDN** → rounded rectangle (rx=8)
+- **Services, Gateways, Load Balancers, CDN** → rounded rectangle (rx=11)
 - **Databases (SQL/NoSQL)** → cylinder shape (see SVG pattern below)
 - **Cache** → rounded rectangle with a slight red tint, labeled with ⚡
 - **Message Queue** → rounded rectangle with queue icon (▶▶)
@@ -90,17 +98,17 @@ Component label:  font-family: 'Segoe UI', system-ui, sans-serif
                   font-size: 13px, font-weight: 600
 Sublabel/type:    font-size: 11px, font-weight: 400, opacity: 0.7
 Tier label:       font-size: 11px, font-weight: 700, letter-spacing: 0.08em
-                  text-transform: uppercase, color: #6C757D
-Arrow label:      font-size: 10px, font-style: italic, fill: #495057
+                  text-transform: uppercase, color: #64748B
+Arrow label:      font-size: 10px, font-style: italic, fill: #64748B
 ```
 
 ### Arrows
 
 - Use SVG `<path>` with marker-end arrowhead
-- Stroke: `#6C757D`, strokeWidth: 1.5, no fill
+- Stroke: `#94A3B8`, strokeWidth: 1.5, no fill
 - Label arrows with protocol/action when meaningful (e.g., "HTTPS", "gRPC", "Pub/Sub", "SQL")
-- Use curved paths (`Q` cubic Bezier) for cross-tier arrows; straight for same-tier
-- Arrowhead: small filled triangle, color `#6C757D`
+- Use cubic Bézier paths (`C`) for cross-tier arrows; straight paths are acceptable for aligned same-tier nodes
+- Arrowhead: small filled triangle, color `#94A3B8`
 
 ### Component Icons (use emoji or simple SVG text)
 
@@ -155,7 +163,7 @@ const DIAGRAM = {
       icon: "🌐",
       x: 400, y: 70,
       width: 120, height: 56,
-      fill: "#E8F4FD", stroke: "#2E86C1", textColor: "#1A5276",
+      fill: "#EFF6FF", stroke: "#BFDBFE", textColor: "#1E40AF",
       shape: "rect",  // "rect" | "cylinder" | "dashed-rect"
     },
     // ... more nodes
@@ -188,32 +196,50 @@ function getAnchorPoint(node, anchor) {
   }
 }
 
+function offsetControl([x, y], anchor, distance) {
+  switch (anchor) {
+    case "top":    return [x, y - distance];
+    case "bottom": return [x, y + distance];
+    case "left":   return [x - distance, y];
+    case "right":  return [x + distance, y];
+    default:        return [x, y];
+  }
+}
+
 function Arrow({ edge, nodes }) {
   const fromNode = nodes.find(n => n.id === edge.from);
   const toNode   = nodes.find(n => n.id === edge.to);
   if (!fromNode || !toNode) return null;
 
-  const [x1, y1] = getAnchorPoint(fromNode, edge.fromAnchor || "bottom");
-  const [x2, y2] = getAnchorPoint(toNode,   edge.toAnchor   || "top");
+  const fromAnchor = edge.fromAnchor || "bottom";
+  const toAnchor = edge.toAnchor || "top";
+  const [x1, y1] = getAnchorPoint(fromNode, fromAnchor);
+  const [x2, y2] = getAnchorPoint(toNode, toAnchor);
+  const distance = Math.max(Math.hypot(x2 - x1, y2 - y1) * 0.35, 28);
+  const [c1x, c1y] = offsetControl([x1, y1], fromAnchor, distance);
+  const [c2x, c2y] = offsetControl([x2, y2], toAnchor, distance);
+  const d = `M ${x1} ${y1} C ${c1x} ${c1y} ${c2x} ${c2y} ${x2} ${y2}`;
 
-  // Bezier control point
-  const mx = (x1 + x2) / 2;
-  const my = (y1 + y2) / 2;
-  const d = `M ${x1} ${y1} Q ${mx} ${my} ${x2} ${y2}`;
-
-  const midX = (x1 * 0.25 + x2 * 0.25 + mx * 0.5);
-  const midY = (y1 * 0.25 + y2 * 0.25 + my * 0.5);
+  // Cubic Bézier point at t=0.5.
+  const midX = (x1 + 3 * c1x + 3 * c2x + x2) / 8;
+  const midY = (y1 + 3 * c1y + 3 * c2y + y2) / 8;
+  const labelWidth = edge.label ? Math.max(36, edge.label.length * 6 + 12) : 0;
 
   return (
     <g>
-      <path d={d} stroke="#6C757D" strokeWidth="1.5" fill="none"
+      <path d={d} stroke="#94A3B8" strokeWidth="1.5" fill="none"
             markerEnd="url(#arrowhead)" strokeDasharray={edge.dashed ? "5,3" : ""} />
       {edge.label && (
-        <text x={midX} y={midY - 4} textAnchor="middle"
-              fontSize="10" fill="#495057" fontStyle="italic"
-              fontFamily="'Segoe UI', system-ui, sans-serif">
-          {edge.label}
-        </text>
+        <>
+          <rect x={midX - labelWidth / 2} y={midY - 10}
+                width={labelWidth} height={18} rx={5}
+                fill="#F1F5F9" opacity={0.96} />
+          <text x={midX} y={midY} textAnchor="middle"
+                dominantBaseline="central" fontSize="10" fill="#64748B"
+                fontStyle="italic" fontFamily="'Segoe UI', system-ui, sans-serif">
+            {edge.label}
+          </text>
+        </>
       )}
     </g>
   );
@@ -248,10 +274,10 @@ function Node({ node, onHover, hovered }) {
                    stroke="none" />
         </>
       ) : shape === "dashed-rect" ? (
-        <rect x={x} y={y} width={width} height={height} rx="8"
+        <rect x={x} y={y} width={width} height={height} rx="11"
               fill={fill} stroke={stroke} strokeWidth="1.5" strokeDasharray="6,3" />
       ) : (
-        <rect x={x} y={y} width={width} height={height} rx="8"
+        <rect x={x} y={y} width={width} height={height} rx="11"
               fill={fill} stroke={stroke} strokeWidth="1.5" />
       )}
 
@@ -293,7 +319,7 @@ export default function ArchDiagram() {
 
   return (
     <div style={{
-      background: "#F8F9FA", minHeight: "100vh", display: "flex",
+      background: "#F8FAFC", minHeight: "100vh", display: "flex",
       flexDirection: "column", alignItems: "center",
       padding: "32px 24px", fontFamily: "'Segoe UI', system-ui, sans-serif"
     }}>
@@ -303,7 +329,7 @@ export default function ArchDiagram() {
           {title}
         </h1>
         {subtitle && (
-          <p style={{ margin: "6px 0 0", fontSize: 14, color: "#6C757D" }}>{subtitle}</p>
+          <p style={{ margin: "6px 0 0", fontSize: 14, color: "#64748B" }}>{subtitle}</p>
         )}
       </div>
 
@@ -315,7 +341,7 @@ export default function ArchDiagram() {
         <defs>
           <marker id="arrowhead" markerWidth="8" markerHeight="6"
                   refX="7" refY="3" orient="auto">
-            <polygon points="0 0, 8 3, 0 6" fill="#6C757D" />
+            <polygon points="0 0, 8 3, 0 6" fill="#94A3B8" />
           </marker>
         </defs>
 
@@ -323,9 +349,9 @@ export default function ArchDiagram() {
         {tiers.map(tier => (
           <g key={tier.id}>
             <rect x={16} y={tier.y} width={width - 32} height={tier.height}
-                  rx="8" fill={tier.color} stroke="#DEE2E6" strokeWidth="1" />
+                  rx="8" fill={tier.color} stroke="#E2E8F0" strokeWidth="1" />
             <text x={28} y={tier.y + 16} fontSize="11" fontWeight="700"
-                  fill="#6C757D" letterSpacing="0.08em"
+                  fill="#64748B" letterSpacing="0.08em"
                   fontFamily="'Segoe UI', system-ui, sans-serif">
               {tier.label}
             </text>
@@ -346,15 +372,15 @@ export default function ArchDiagram() {
       {/* Legend */}
       <div style={{
         marginTop: 20, display: "flex", gap: 16, flexWrap: "wrap",
-        justifyContent: "center", fontSize: 12, color: "#6C757D"
+        justifyContent: "center", fontSize: 12, color: "#64748B"
       }}>
         {[
-          { color: "#2E86C1", bg: "#E8F4FD", label: "Client" },
-          { color: "#27AE60", bg: "#EAFAF1", label: "Service" },
-          { color: "#2471A3", bg: "#EBF5FB", label: "Database" },
-          { color: "#E74C3C", bg: "#FDEDEC", label: "Cache" },
-          { color: "#E67E22", bg: "#FFF3E0", label: "Queue" },
-          { color: "#F39C12", bg: "#FEF9E7", label: "Load Balancer" },
+          { color: "#3B82F6", bg: "#EFF6FF", label: "Client" },
+          { color: "#16A34A", bg: "#F0FDF4", label: "Service" },
+          { color: "#1D4ED8", bg: "#EFF6FF", label: "Database" },
+          { color: "#E11D48", bg: "#FEF2F2", label: "Cache" },
+          { color: "#EA580C", bg: "#FFF7ED", label: "Queue" },
+          { color: "#F59E0B", bg: "#FFFBEB", label: "Load Balancer" },
         ].map(({ color, bg, label }) => (
           <span key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{
