@@ -14,6 +14,7 @@ import {
   NODE_DEFAULT_FIELDS,
   NODE_TYPES,
 } from "../src/diagram/contract.js";
+import * as contract from "../src/diagram/contract.js";
 import { validateDiagram } from "../src/diagram/schema.js";
 import { buildDiagramSchema } from "../scripts/schema.mjs";
 
@@ -40,6 +41,29 @@ function coordinateFreeFlowchart() {
 test("checked-in artifact is byte-for-byte generated from the centralized contract", () => {
   assert.equal(fs.existsSync(schemaPath), true);
   assert.equal(fs.readFileSync(schemaPath, "utf8"), `${JSON.stringify(buildDiagramSchema(), null, 2)}\n`);
+});
+
+test("every closed JSON Schema object derives its property keys from the contract", () => {
+  const schema = buildDiagramSchema();
+  const fieldSets = [
+    [schema.properties, contract.DIAGRAM_FIELDS],
+    [schema.$defs.nodeDefaults.properties, NODE_DEFAULT_FIELDS],
+    [schema.$defs.tier.properties, contract.TIER_FIELDS],
+    [schema.$defs.node.properties, contract.NODE_FIELDS],
+    [schema.$defs.edge.properties, contract.EDGE_FIELDS],
+    [schema.$defs.legendItem.oneOf[1].properties, contract.LEGEND_OBJECT_FIELDS],
+  ];
+
+  for (const [properties, fields] of fieldSets) {
+    assert.deepEqual(Object.keys(properties), fields);
+    assert.equal(Object.isFrozen(fields), true);
+  }
+});
+
+test("the checked-in JSON Schema artifact compiles independently", () => {
+  const artifact = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
+  const validate = new Ajv2020({ strict: true, allErrors: true }).compile(artifact);
+  assert.equal(validate(coordinateFreeFlowchart()), true, JSON.stringify(validate.errors));
 });
 
 test("JSON Schema validates all checked-in examples", () => {
@@ -130,4 +154,28 @@ test("known invalid values fail with their JSON Schema keywords", () => {
     assert.ok(validate.errors.some((error) => error.keyword === keyword), `${keyword}: ${JSON.stringify(validate.errors)}`);
   }
   assert.ok(NODE_TYPES.length > 0);
+});
+
+test("runtime and JSON Schema reject unknown closed-object fields and numeric edge ids", () => {
+  const diagram = {
+    ...coordinateFreeFlowchart(),
+    metadata: { owner: "diagram team" },
+    tiers: [{ id: "main", label: "Main", metadata: true }],
+    nodes: [{ ...coordinateFreeFlowchart().nodes[0], metadata: true }, coordinateFreeFlowchart().nodes[1]],
+    edges: [{ from: "start", to: "work", id: 7, metadata: true }],
+    legend: [{ type: "terminal", label: "Start", metadata: true }],
+  };
+  assert.deepEqual(validateDiagram(diagram).map(({ code }) => code), [
+    "unknown-diagram-field",
+    "unknown-tier-field",
+    "unknown-legend-object-field",
+    "unknown-node-field",
+    "unknown-edge-field",
+    "invalid-edge-id",
+  ]);
+
+  const validate = validator();
+  assert.equal(validate(diagram), false);
+  assert.ok(validate.errors.some((error) => error.keyword === "additionalProperties"));
+  assert.ok(validate.errors.some((error) => error.keyword === "type" && error.instancePath === "/edges/0/id"));
 });

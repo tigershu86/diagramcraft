@@ -1,13 +1,18 @@
 import {
   ANCHORS,
   DEFAULT_NODE,
+  DIAGRAM_FIELDS,
   DIAGRAM_KINDS,
+  EDGE_FIELDS,
   hasOwnPosition,
   hasPartialPosition,
+  LEGEND_OBJECT_FIELDS,
   NODE_DEFAULT_FIELDS,
+  NODE_FIELDS,
   NODE_PRESETS,
   NODE_SHAPES,
   NODE_TYPES,
+  TIER_FIELDS,
 } from "./contract.js";
 
 const kinds = new Set(DIAGRAM_KINDS);
@@ -15,6 +20,11 @@ const anchors = new Set(ANCHORS);
 const shapes = new Set(NODE_SHAPES);
 const nodeTypes = new Set(NODE_TYPES);
 const nodeDefaultFields = new Set(NODE_DEFAULT_FIELDS);
+const diagramFields = new Set(DIAGRAM_FIELDS);
+const tierFields = new Set(TIER_FIELDS);
+const nodeFields = new Set(NODE_FIELDS);
+const edgeFields = new Set(EDGE_FIELDS);
+const legendObjectFields = new Set(LEGEND_OBJECT_FIELDS);
 
 function issue(code, path, message) {
   return { code, path, message };
@@ -36,6 +46,15 @@ function validateOptionalCanvasDimension(issues, diagram, dimension) {
   }
 }
 
+function validateKnownFields(issues, value, allowedFields, code, path, description) {
+  Object.getOwnPropertyNames(value).forEach((field) => {
+    if (!allowedFields.has(field)) {
+      const fieldPath = path ? `${path}.${field}` : field;
+      issues.push(issue(code, fieldPath, `${description} ${field} is not supported`));
+    }
+  });
+}
+
 export function validateDiagram(diagram, options = {}) {
   const issues = [];
   const layout = options.layout || "missing";
@@ -44,6 +63,7 @@ export function validateDiagram(diagram, options = {}) {
     return [issue("invalid-diagram", "$", "Diagram must be an object")];
   }
 
+  validateKnownFields(issues, diagram, diagramFields, "unknown-diagram-field", "", "diagram field");
   if (!kinds.has(diagram.kind)) {
     issues.push(issue("invalid-kind", "kind", "kind must be architecture or flowchart"));
   }
@@ -85,6 +105,7 @@ export function validateDiagram(diagram, options = {}) {
       issues.push(issue("invalid-tier", tierPath, "tier must be an object"));
       return;
     }
+    validateKnownFields(issues, tier, tierFields, "unknown-tier-field", tierPath, "tier field");
     if (typeof tier.id !== "string" || tier.id.length === 0) {
       issues.push(issue("invalid-tier-id", `${tierPath}.id`, "tier id must be a non-empty string"));
     } else if (tierIds.has(tier.id)) {
@@ -115,6 +136,7 @@ export function validateDiagram(diagram, options = {}) {
     if (typeof item === "string") {
       if (!nodeTypes.has(item)) issues.push(issue("invalid-legend-type", legendPath, "legend type must be supported"));
     } else if (item && typeof item === "object" && !Array.isArray(item)) {
+      validateKnownFields(issues, item, legendObjectFields, "unknown-legend-object-field", legendPath, "legend field");
       if (typeof item.type !== "string" || !nodeTypes.has(item.type)) {
         issues.push(issue("invalid-legend-type", `${legendPath}.type`, "legend type must be supported"));
       }
@@ -137,6 +159,7 @@ export function validateDiagram(diagram, options = {}) {
       issues.push(issue("invalid-node", nodePath, "node must be an object"));
       return;
     }
+    validateKnownFields(issues, node, nodeFields, "unknown-node-field", nodePath, "node field");
     if (typeof node.id !== "string" || node.id.length === 0) {
       issues.push(issue("invalid-node-id", `${nodePath}.id`, "node id must be a non-empty string"));
     } else if (ids.has(node.id)) {
@@ -182,10 +205,12 @@ export function validateDiagram(diagram, options = {}) {
       issues.push(issue("invalid-edge", edgePath, "edge must be an object"));
       return;
     }
+    validateKnownFields(issues, edge, edgeFields, "unknown-edge-field", edgePath, "edge field");
     if (!ids.has(edge.from)) issues.push(issue("missing-edge-source", `${edgePath}.from`, `missing edge source: ${edge.from}`));
     if (!ids.has(edge.to)) issues.push(issue("missing-edge-target", `${edgePath}.to`, `missing edge target: ${edge.to}`));
     if (typeof edge.from !== "string") issues.push(issue("invalid-edge-from", `${edgePath}.from`, "edge source must be a string"));
     if (typeof edge.to !== "string") issues.push(issue("invalid-edge-to", `${edgePath}.to`, "edge target must be a string"));
+    optionalString(issues, edge.id, "invalid-edge-id", `${edgePath}.id`, "edge id must be a string");
     optionalString(issues, edge.label, "invalid-edge-label", `${edgePath}.label`, "edge label must be a string");
     if (edge.dashed !== undefined && typeof edge.dashed !== "boolean") {
       issues.push(issue("invalid-edge-dashed", `${edgePath}.dashed`, "edge dashed must be a boolean"));

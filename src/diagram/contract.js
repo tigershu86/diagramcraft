@@ -5,7 +5,16 @@ export const NODE_TYPES = Object.freeze([
   "client", "cdn", "lb", "security", "gateway", "service", "cache", "database", "queue", "search", "external",
   "terminal", "process", "decision", "data", "sub", "state", "highlight", "error",
 ]);
+export const DIAGRAM_FIELDS = Object.freeze([
+  "kind", "title", "subtitle", "width", "height", "nodeDefaults", "tiers", "nodes", "edges", "legend",
+]);
 export const NODE_DEFAULT_FIELDS = Object.freeze(["width", "height", "shape", "sublabel"]);
+export const TIER_FIELDS = Object.freeze(["id", "label", "x", "y", "width", "height", "color"]);
+export const NODE_FIELDS = Object.freeze([
+  "id", "label", "type", "x", "y", "tier", "width", "height", "fontSize", "shape", "sublabel", "style",
+]);
+export const EDGE_FIELDS = Object.freeze(["id", "from", "to", "label", "dashed", "fromAnchor", "toAnchor"]);
+export const LEGEND_OBJECT_FIELDS = Object.freeze(["type", "label"]);
 
 export const NODE_PRESETS = Object.freeze({
   terminal: Object.freeze({ width: 140, height: 44, shape: "terminal" }),

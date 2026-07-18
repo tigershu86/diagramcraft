@@ -146,6 +146,18 @@ test("validateDiagram rejects unsafe node font sizes and styles used by the rend
   );
 });
 
+test("validateDiagram rejects fontSize boundaries and non-object styles", () => {
+  for (const [fontSize, style] of [[0, null], [-1, []], [Infinity, "highlight"]]) {
+    assert.deepEqual(
+      validateDiagram({
+        ...validDiagram,
+        nodes: [{ ...validDiagram.nodes[0], fontSize, style }, validDiagram.nodes[1]],
+      }).map(({ code }) => code),
+      ["invalid-node-font-size", "invalid-node-style"],
+    );
+  }
+});
+
 test("normalizeDiagram applies presets without inventing omitted coordinates", () => {
   const normalized = normalizeDiagram({
     kind: "flowchart",
