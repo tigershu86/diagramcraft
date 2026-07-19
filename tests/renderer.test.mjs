@@ -62,6 +62,48 @@ test("DiagramRenderer ignores an initial selection missing from the current diag
   assert.doesNotMatch(html, /opacity="0\.16"/);
 });
 
+test("DiagramRenderer uses valid custom accent colors for active node shadows", () => {
+  const renderSelectedAccent = (accent) => renderToStaticMarkup(React.createElement(DiagramRenderer, {
+    initialSelectedId: "custom",
+    diagram: {
+      kind: "flowchart",
+      title: "Custom accent shadow",
+      width: 240,
+      height: 120,
+      nodes: [{
+        id: "custom",
+        label: "Custom",
+        type: "process",
+        x: 40,
+        y: 30,
+        style: { accent },
+      }],
+      edges: [],
+    },
+  }));
+
+  const named = renderSelectedAccent(" red ");
+  assert.match(named, /filter:drop-shadow\(0 4px 12px red\)/);
+  assert.doesNotMatch(named, /red45/);
+
+  const functional = renderSelectedAccent(" rgb(10 20 30 \/ 50%) ");
+  assert.match(functional, /filter:drop-shadow\(0 4px 12px rgb\(10 20 30 \/ 50%\)\)/);
+  assert.doesNotMatch(functional, /\)45/);
+
+  const canonicalHex = renderSelectedAccent(" #12aBcD ");
+  assert.match(canonicalHex, /filter:drop-shadow\(0 4px 12px #12aBcD45\)/);
+
+  for (const hex of ["#abc", "#abcd", "#12345678"]) {
+    const nonCanonicalHex = renderSelectedAccent(` ${hex} `);
+    assert.match(nonCanonicalHex, new RegExp(`filter:drop-shadow\\(0 4px 12px ${hex}\\)`));
+    assert.doesNotMatch(nonCanonicalHex, new RegExp(`${hex}45`));
+  }
+
+  const noPaint = renderSelectedAccent(" none ");
+  assert.match(noPaint, /filter:none/);
+  assert.doesNotMatch(noPaint, /drop-shadow\(0 4px 12px none\)/);
+});
+
 test("DiagramRenderer rejects invalid graph data before rendering", () => {
   assert.throws(
     () => renderToStaticMarkup(React.createElement(DiagramRenderer, {

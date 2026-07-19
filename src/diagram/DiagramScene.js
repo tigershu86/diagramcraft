@@ -12,6 +12,13 @@ export function svgIdPrefix(value) {
   return `svg-${encoded || "0"}`;
 }
 
+function activeNodeShadow(accent) {
+  const color = accent.trim();
+  if (/^(?:none|transparent)$/i.test(color)) return "none";
+  const shadowColor = /^#[0-9a-fA-F]{6}$/.test(color) ? `${color}45` : color;
+  return `drop-shadow(0 4px 12px ${shadowColor})`;
+}
+
 function shapeElements(node, style, active, selected, clipId) {
   const { x, y, width, height, shape } = node;
   const centerX = x + width / 2;
@@ -112,7 +119,7 @@ function DiagramNode({ node, hovered, selected, onHover, onSelect, interactive, 
       transform: selected ? "scale(1.045)" : "scale(1)",
       transition: "transform 180ms ease, filter 180ms ease",
       filter: active
-        ? `drop-shadow(0 4px 12px ${style.accent}45)`
+        ? activeNodeShadow(style.accent)
         : "drop-shadow(0 1px 3px rgba(15,23,42,0.08))",
     },
   } : {};
