@@ -2,6 +2,18 @@
 
 A pair of Claude skills plus a shared React/SVG runtime for architecture diagrams and flowcharts — inspired by ByteByteGo's style and the draw.io skill approach.
 
+## Preview
+
+<p align="center">
+  <img src="./docs/images/diagramcraft-preview-desktop.png" alt="Diagramcraft desktop preview showing an e-commerce architecture diagram" width="100%">
+</p>
+
+<p align="center">
+  <img src="./docs/images/diagramcraft-preview-mobile.png" alt="Diagramcraft mobile preview showing the responsive login flow" width="390">
+</p>
+
+The shared preview supports architecture and flowchart datasets, deterministic relayout, keyboard and touch interaction, plus standalone SVG and 2× PNG export.
+
 ## Skills
 
 | Skill | 用途 | 触发词 |
