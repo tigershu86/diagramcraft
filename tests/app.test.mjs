@@ -38,9 +38,9 @@ test("preview toolbar exposes independent diagram actions and a persistent live 
   assert.match(html, /class="toolbar-controls"/);
   assert.match(html, /role="tablist"[^>]*aria-label="Diagram examples"/);
   assert.match(html, /class="diagram-actions"[^>]*role="group"[^>]*aria-label="Diagram actions"/);
-  assert.match(html, /<button[^>]*type="button"[^>]*>自动重排<\/button>/);
-  assert.match(html, /<button[^>]*type="button"[^>]*>导出 SVG<\/button>/);
-  assert.match(html, /<button[^>]*type="button"[^>]*>导出 PNG<\/button>/);
+  assert.match(html, /<button[^>]*type="button"[^>]*>Auto layout<\/button>/);
+  assert.match(html, /<button[^>]*type="button"[^>]*>Export SVG<\/button>/);
+  assert.match(html, /<button[^>]*type="button"[^>]*>Export PNG<\/button>/);
   assert.match(html, /<p[^>]*class="action-status"[^>]*role="status"[^>]*aria-live="polite"><\/p>/);
 });
 
@@ -104,8 +104,8 @@ test("formatActionError keeps action failures readable for Error and non-Error v
   assert.equal(formatActionError("network unavailable"), "network unavailable");
   assert.equal(formatActionError(0), "0");
   assert.equal(formatActionError(false), "false");
-  assert.equal(formatActionError(""), "未知错误");
-  assert.equal(formatActionError(null), "未知错误");
+  assert.equal(formatActionError(""), "Unknown error");
+  assert.equal(formatActionError(null), "Unknown error");
 });
 
 test("isCurrentActionRequest accepts only the latest mounted request token", () => {

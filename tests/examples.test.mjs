@@ -25,6 +25,19 @@ const examples = [
 ];
 const architectureExamples = [ARCH_ECOMMERCE, ARCH_FLOWCHART_STYLE];
 
+test("the login flow uses English display copy", () => {
+  const displayCopy = [
+    LOGIN_FLOW.title,
+    LOGIN_FLOW.subtitle,
+    ...LOGIN_FLOW.nodes.map((node) => node.label),
+    ...LOGIN_FLOW.edges.map((edge) => edge.label || ""),
+    ...LOGIN_FLOW.legend.map((item) => item.label),
+  ].join(" ");
+
+  assert.doesNotMatch(displayCopy, /[\u4e00-\u9fff]/);
+  assert.equal(LOGIN_FLOW.title, "User Login Flow");
+});
+
 test("all example diagrams satisfy the shared schema and render", () => {
   for (const [, diagram, expectedNodes] of examples) {
     assert.deepEqual(validateDiagram(diagram), []);

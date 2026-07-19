@@ -111,7 +111,7 @@ export function DiagramRenderer({
       textAlign: "center",
       fontSize: 11,
       color: TOKENS.edge,
-    } }, "点击或按 Enter 高亮关联路径 · 移动端可横向滑动") : null,
+    } }, "Select a node or press Enter to trace connections · Swipe horizontally on mobile") : null,
   ]);
 }
 

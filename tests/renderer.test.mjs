@@ -35,6 +35,7 @@ test("DiagramRenderer emits an accessible SVG with data-driven nodes and edges",
   assert.match(html, /transition:transform 180ms ease,\s*filter 180ms ease/);
   assert.match(html, /M 210 64 C/);
   assert.match(html, />review<\/text>/);
+  assert.match(html, /Select a node or press Enter to trace connections · Swipe horizontally on mobile/);
 });
 
 test("DiagramRenderer preserves optional preview output modes", () => {
@@ -47,7 +48,7 @@ test("DiagramRenderer preserves optional preview output modes", () => {
 
   assert.doesNotMatch(html, /<header/);
   assert.doesNotMatch(html, /class="diagram-legend"/);
-  assert.doesNotMatch(html, /点击或按 Enter/);
+  assert.doesNotMatch(html, /Select a node or press Enter/);
   assert.match(html, /<section class="diagram-renderer"/);
   assert.match(html, /<svg[^>]+role="group"/);
   assert.match(html, /<g role="button" tabindex="0"/);

@@ -35,8 +35,8 @@ export function setExampleOverride(overrides, id, diagram) {
 }
 
 export function formatActionError(error) {
-  if (error instanceof Error) return error.message || "未知错误";
-  if (error === null || error === undefined || error === "") return "未知错误";
+  if (error instanceof Error) return error.message || "Unknown error";
+  if (error === null || error === undefined || error === "") return "Unknown error";
   return String(error);
 }
 
@@ -126,16 +126,16 @@ export default function App() {
     invalidatePngRequest();
     if (hasOverride) {
       setOverrides((current) => setExampleOverride(current, active.id, null));
-      setStatus("已恢复原布局");
+      setStatus("Original layout restored");
       return;
     }
 
     try {
       const diagram = layoutDiagram(active.diagram, { mode: "force" });
       setOverrides((current) => setExampleOverride(current, active.id, diagram));
-      setStatus("已完成自动重排");
+      setStatus("Auto layout complete");
     } catch (error) {
-      setStatus(`自动重排失败：${formatActionError(error)}`);
+      setStatus(`Auto layout failed: ${formatActionError(error)}`);
     }
   };
 
@@ -143,9 +143,9 @@ export default function App() {
     invalidatePngRequest();
     try {
       downloadDiagramSvg(visibleDiagram);
-      setStatus("SVG 已导出");
+      setStatus("SVG exported");
     } catch (error) {
-      setStatus(`SVG 导出失败：${formatActionError(error)}`);
+      setStatus(`SVG export failed: ${formatActionError(error)}`);
     }
   };
 
@@ -153,15 +153,15 @@ export default function App() {
     const requestToken = actionRequestRef.current + 1;
     actionRequestRef.current = requestToken;
     setPngBusy(true);
-    setStatus("PNG 正在导出…");
+    setStatus("Exporting PNG…");
     try {
       await downloadDiagramPng(visibleDiagram);
       if (isCurrentActionRequest(actionRequestRef.current, requestToken, mountedRef.current)) {
-        setStatus("PNG 已导出");
+        setStatus("PNG exported");
       }
     } catch (error) {
       if (isCurrentActionRequest(actionRequestRef.current, requestToken, mountedRef.current)) {
-        setStatus(`PNG 导出失败：${formatActionError(error)}`);
+        setStatus(`PNG export failed: ${formatActionError(error)}`);
       }
     } finally {
       if (isCurrentActionRequest(actionRequestRef.current, requestToken, mountedRef.current)) {
@@ -187,14 +187,14 @@ export default function App() {
             key: "actions",
           }, [
             h("button", { type: "button", onClick: toggleLayout, key: "layout" },
-              hasOverride ? "恢复原布局" : "自动重排"),
-            h("button", { type: "button", onClick: exportSvg, key: "svg" }, "导出 SVG"),
+              hasOverride ? "Restore layout" : "Auto layout"),
+            h("button", { type: "button", onClick: exportSvg, key: "svg" }, "Export SVG"),
             h("button", {
               type: "button",
               onClick: exportPng,
               disabled: pngBusy,
               key: "png",
-            }, "导出 PNG"),
+            }, "Export PNG"),
           ]),
           h("p", {
             className: "action-status",
