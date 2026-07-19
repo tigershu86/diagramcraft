@@ -16,10 +16,10 @@ The shared preview supports architecture and flowchart datasets, deterministic r
 
 ## Skills
 
-| Skill | 用途 | 触发词 |
+| Skill | Purpose | Example prompts |
 |---|---|---|
-| `arch-diagram` | 系统架构图、微服务图、云基础设施 | "画架构图"、"系统设计图"、"帮我画一个…的架构" |
-| `flowchart` | 流程图、决策树、时序图、状态机、泳道图 | "画流程图"、"用 Claude 的方式画图"、"flowchart" |
+| `arch-diagram` | System architecture, microservices, and cloud infrastructure | "Create an architecture diagram", "Design a system diagram", "Show the architecture for…" |
+| `flowchart` | Flowcharts, decision trees, sequence diagrams, state machines, and swimlanes | "Create a flowchart", "Visualize this process", "Build a decision tree" |
 
 Both skills share the same visual DNA — same color palette, same `rx=11` border radius, same bezier curves — so diagrams from both look like they come from the same design system.
 
